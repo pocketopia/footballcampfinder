@@ -1,0 +1,5 @@
+{
+  "name": "Football Camp Finder",
+  "description": "Find football camps near you with GPS, distance filters, and date ranges.",
+  "requestFramePermissions": ["geolocation"]
+}
