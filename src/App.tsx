@@ -25,7 +25,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { format, isWithinInterval, parseISO, addDays } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { MOCK_CAMPS, type FootballCamp } from './data/camps';
+import { CAMP_DATABASE, type FootballCamp } from './data/camps';
 
 // Utility for tailwind classes
 function cn(...inputs: ClassValue[]) {
@@ -146,7 +146,7 @@ export default function App() {
   }, []);
 
   const filteredCamps = useMemo(() => {
-    return MOCK_CAMPS.filter(camp => {
+    return CAMP_DATABASE.filter(camp => {
       // Search query filter
       const matchesSearch = camp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            camp.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -340,9 +340,9 @@ export default function App() {
                   <div className="p-4 rounded-2xl border bg-white border-stone-200 shadow-sm opacity-70 grayscale-[0.5]">
                     <div className="flex gap-4">
                       <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-stone-100">
-                        <img 
-                          src="https://picsum.photos/seed/football-mock/800/600" 
-                          alt="Mock Academy" 
+                    <img 
+                      src="https://picsum.photos/seed/football-preview/800/600" 
+                      alt="Preview Academy" 
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"
                         />
@@ -366,7 +366,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="mt-3 pt-3 border-t border-stone-50">
-                      <p className="text-[10px] text-stone-400 italic">This is a mockup showing how camp details appear in the list.</p>
+                      <p className="text-[10px] text-stone-400 italic">This is a preview showing how camp details appear in the list.</p>
                     </div>
                   </div>
                 </div>

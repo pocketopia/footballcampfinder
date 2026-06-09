@@ -11,7 +11,7 @@ export interface FootballCamp {
   type: 'Youth' | 'High School' | 'Elite' | 'Specialist';
 }
 
-export const MOCK_CAMPS: FootballCamp[] = [
+export const CAMP_DATABASE: FootballCamp[] = [
   {
     id: '1',
     name: 'Elite Quarterback Academy',
