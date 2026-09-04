@@ -1,0 +1,18 @@
+# Blipkis Voice Module Dependencies - Phase 7
+# Install with: pip install -r requirements_voice.txt
+
+# Audio I/O library for microphone access
+pyaudio>=0.2.13
+
+# Speech-to-text transcription (uses Google's free speech API)
+SpeechRecognition>=3.10.0
+
+# Global hotkey listener for keyboard events
+pynput>=1.7.6
+
+# Optional: For better audio processing
+# sounddevice>=0.4.6
+# scipy>=1.11.0
+
+# Optional: For offline transcription (Whisper)
+# openai-whisper>=20231117
