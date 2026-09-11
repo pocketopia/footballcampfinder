@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   APIProvider, 
   Map, 
@@ -15,6 +15,10 @@ import {
   Filter, 
   Navigation, 
   ChevronRight, 
+  ChevronLeft,
+  ChevronDown,
+  ExternalLink,
+  Loader2,
   X,
   Trophy,
   Users,
@@ -32,11 +36,14 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
+const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY || '';
 const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
 
 const DEFAULT_CENTER = { lat: 34.0522, lng: -118.2437 }; // LA
 const DEFAULT_ZOOM = 10;
+
+// Simulated network latency for the "live database fetch" search experience.
+const SEARCH_SIMULATION_MS = 800;
 
 // Calculate distance between two points in km
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -56,18 +63,80 @@ function deg2rad(deg: number) {
   return deg * (Math.PI / 180);
 }
 
+const CAMP_TYPES: FootballCamp['type'][] = [
+  'Youth', 'Middle School', 'Prospect', 'Team', 'Mega/Showcase',
+  'Lineman / Big-Man', 'Specialty', 'QB/Passing', '7on7', 'Flag',
+];
+
+const US_STATE_ABBREVIATIONS: Record<string, string> = {
+  Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA',
+  Colorado: 'CO', Connecticut: 'CT', Delaware: 'DE', Florida: 'FL', Georgia: 'GA',
+  Hawaii: 'HI', Idaho: 'ID', Illinois: 'IL', Indiana: 'IN', Iowa: 'IA', Kansas: 'KS',
+  Kentucky: 'KY', Louisiana: 'LA', Maine: 'ME', Maryland: 'MD', Massachusetts: 'MA',
+  Michigan: 'MI', Minnesota: 'MN', Mississippi: 'MS', Missouri: 'MO', Montana: 'MT',
+  Nebraska: 'NE', Nevada: 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+  'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND',
+  Ohio: 'OH', Oklahoma: 'OK', Oregon: 'OR', Pennsylvania: 'PA', 'Rhode Island': 'RI',
+  'South Carolina': 'SC', 'South Dakota': 'SD', Tennessee: 'TN', Texas: 'TX', Utah: 'UT',
+  Vermont: 'VT', Virginia: 'VA', Washington: 'WA', 'West Virginia': 'WV',
+  Wisconsin: 'WI', Wyoming: 'WY',
+};
+
+const US_STATES = Object.keys(US_STATE_ABBREVIATIONS);
+
+interface SearchFilters {
+  types: FootballCamp['type'][];
+  distanceMode: 'local' | 'states' | 'national';
+  states: string[];
+  startDate: string;
+  endDate: string;
+  year: string;
+}
+
+const DEFAULT_FILTERS: SearchFilters = {
+  types: [],
+  distanceMode: 'local',
+  states: [],
+  startDate: '',
+  endDate: '',
+  year: String(new Date().getFullYear()),
+};
+
+const getTypeBadgeClasses = (type: FootballCamp['type']) => {
+  switch (type) {
+    case 'Youth': return 'bg-emerald-100 text-emerald-700';
+    case 'Middle School': return 'bg-teal-100 text-teal-700';
+    case 'Prospect': return 'bg-blue-100 text-blue-700';
+    case 'Team': return 'bg-indigo-100 text-indigo-700';
+    case 'Mega/Showcase': return 'bg-amber-100 text-amber-900';
+    case 'Lineman / Big-Man': return 'bg-stone-200 text-stone-700';
+    case 'Specialty': return 'bg-violet-100 text-violet-700';
+    case 'QB/Passing': return 'bg-sky-100 text-sky-700';
+    case '7on7': return 'bg-pink-100 text-pink-700';
+    case 'Flag': return 'bg-lime-100 text-lime-700';
+    default: return 'bg-stone-100 text-stone-700';
+  }
+};
+
+const getPinColorForLegend = (type: string) => {
+  switch (type) {
+    case 'Youth': return '#10b981'; // Emerald
+    case 'Middle School': return '#14b8a6'; // Teal
+    case 'Prospect': return '#3b82f6'; // Blue
+    case 'Team': return '#6366f1'; // Indigo
+    case 'Mega/Showcase': return '#f59e0b'; // Amber
+    case 'Lineman / Big-Man': return '#78716c'; // Stone
+    case 'Specialty': return '#8b5cf6'; // Violet
+    case 'QB/Passing': return '#0ea5e9'; // Sky
+    case '7on7': return '#ec4899'; // Pink
+    case 'Flag': return '#84cc16'; // Lime
+    default: return '#ef4444'; // Red
+  }
+};
+
 const CampMarker = ({ camp, onClick }: { camp: FootballCamp; onClick: () => void; key?: string }) => {
   const [markerRef, marker] = useAdvancedMarkerRef();
-  
-  const getPinColor = (type: string) => {
-    switch (type) {
-      case 'Youth': return '#10b981'; // Emerald
-      case 'High School': return '#3b82f6'; // Blue
-      case 'Elite': return '#f59e0b'; // Amber
-      case 'Specialist': return '#8b5cf6'; // Violet
-      default: return '#ef4444'; // Red
-    }
-  };
+  const getPinColor = getPinColorForLegend;
 
   return (
     <AdvancedMarker
@@ -85,8 +154,9 @@ const CampMarker = ({ camp, onClick }: { camp: FootballCamp; onClick: () => void
   );
 };
 
+
 const SplashScreen = () => (
-  <div className="flex items-center justify-center h-screen bg-stone-50 font-sans p-6">
+  <div className="flex items-center justify-center h-full bg-stone-50 font-sans p-6">
     <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-stone-100">
       <div className="w-16 h-16 bg-green-700 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-lg shadow-green-200">
         <MapPin className="text-white w-8 h-8" />
@@ -118,16 +188,898 @@ const SplashScreen = () => (
   </div>
 );
 
-export default function App() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [maxDistance, setMaxDistance] = useState(50); // km
-  const [dateRange, setDateRange] = useState({ 
-    start: format(new Date(), 'yyyy-MM-dd'),
-    end: format(addDays(new Date(), 90), 'yyyy-MM-dd')
-  });
+const LOCAL_RADIUS_KM = 75;
+
+type ViewType = 'welcome' | 'login' | 'register' | 'search' | 'guide' | 'locker' | 'reviews';
+
+interface CampTypeGuideEntry {
+  type: FootballCamp['type'];
+  description: string;
+}
+
+
+const CAMP_TYPE_GUIDE: CampTypeGuideEntry[] = [
+  {
+    type: 'Specialty',
+    description: 'Specifically designed for kickers, punters and long-snappers. Each camp site will have its own specifics, be sure to check their website.These camps are a great way for high school kickers & punters and special-teamers to receive intensive, position-specific training by college coaches. Players will gain exposure, be able to evaluate and perform against competition, and improve their skills in the off-season.',
+  },
+  {
+    type: 'Youth',
+    description: 'Typically consists of ages 6-12, or elementary school age. Each camp site will have its own specifics, be sure to check their website. Entry-level camps designed to teach basic fundamentals and rules of the game in a fun low-pressure environment. These camps should be based on athletic and mental development and sportsmanship, not competition.',
+  },
+  {
+    type: 'Lineman / Big-Man',
+    description: 'Camps specifically designed for offensive & defensive lineman. Each camp site will have its own specifics, be sure to check their website.These camps are a great way for high school linemen to receive intensive, position-specific training by college coaches or former professional players. Athletes will gain exposure, be able to evaluate and perform against competition, and improve their skills, agility, techniques and conditioning in the off-season.',
+  },
+  {
+    type: 'Prospect',
+    description: 'Advanced 1-day camps held by colleges or private companies to evaluate high school players. Athletes will display their skills through combine testing, metrics, drills and competition to gain high exposure and experience. These camps are also used as a legal way for colleges to recruit specific talent and talk to underclassmen they have interest in. They are typically run and coached by the hosting college coaching staff or a private company may rent a field at a local high school for the day.',
+  },
+  {
+    type: 'Team',
+    description: 'For high school teams. Each camp site will have its own specifics, be sure to check their website.These camps are a great way for high school teams to train together, condition, improve team chemistry, evaluate new or young players in action against competition, and install new plays and schemes. Team camps are typically held at colleges or universities and run by college coaching staffs.',
+  },
+  {
+    type: '7on7',
+    description: 'These camps are passing-focused, non-contact, highly-competitive tournaments for team play. 7 on 7 camps held at colleges are typically run by the hosting coaching staff and can be used as a platform to evaluate prospects and talent. However, exposure is not as high as a Mega camp, Showcase or Prospect camp.Most of these events typically conclude with bracket-stye playoffs and awarded champions.',
+  },
+  {
+    type: 'QB/Passing',
+    description: 'Camps specifically dedicated for quarterbacks, but are usually accompanied with receivers. Each camp site will have its own specifics, be sure to check their website.These camps are a great way for high school quarterbacks to receive intensive, position-specific training by college coaches. Expect drills with a high-focus on mechanics, footwork, accuracy and route throwing, typically ending with competition. Athletes will gain exposure and good preparation for the upcoming season.',
+  },
+  {
+    type: 'Mega/Showcase',
+    description: 'MEGA CAMPS: Large-scale advanced camps typically held at colleges. They often feature combine-style testing (40-Yard dash, Pro Agility, Broad Jump). Players will perform through drills and competition in front of various visiting colleges to gain high exposure and experience. Expect hundreds of athletes in attendance. SHOWCASES: Open or invite-only advanced camps that may be hosted by a single college or feature several colleges, with media and metrics to evaluate players through combine testing, drills and competition. Players gain exposure and experience. Expect large numbers of athletes in attendance.',
+  },
+  {
+    type: 'Middle School',
+    description: 'Typically consists of 6th-8th grade. Each camp site will have its own specifics, be sure to check their website.These camps will teach fundamentals and be somewhat competitive. Coaches will begin to teach more position-specific drills. They are a great way to learn the game before the season or polish/improve skills for more advanced players. These camps can be more award and goal-oriented.',
+  },
+  {
+    type: 'Flag',
+    description: 'Camps can be exclusively for girls, boys or coed. Each camp site will have its own specifics, be sure to check their website.Look for these camps to teach game rules and fundamental skills. They are non-contact and can help beginner, intermediate or advanced players. They can be competitive, depending upon age requirements. Coaches will begin to teach more position-specific drills, plays and schemes while focusing on development.',
+  },
+];
+
+
+function WelcomeScreen({ onLogin, onRegister }: { onLogin: () => void; onRegister: () => void }) {
+  return (
+    <div className="relative h-[100dvh] w-full bg-[url('/cover.png')] bg-cover bg-center flex flex-col items-center justify-end overflow-hidden pt-[max(env(safe-area-inset-top),3rem)]">
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
+      <div className="relative z-10 w-full max-w-md flex flex-col gap-4 px-5 pb-8">
+        <p className="text-red-500 font-extrabold text-center mb-4 uppercase tracking-widest text-sm drop-shadow-md">Create LOCKER ROOM profile to access camps</p>
+        <button
+          type="button"
+          onClick={onLogin}
+          className="w-full py-4 bg-green-700 text-white text-xl font-extrabold uppercase tracking-wider rounded-2xl shadow-2xl shadow-black/50 hover:bg-green-800 active:bg-green-900 transition-all hover:-translate-y-0.5"
+        >
+          Login
+        </button>
+        <button
+          type="button"
+          onClick={onRegister}
+          className="w-full py-4 bg-yellow-400 text-green-900 text-xl font-extrabold uppercase tracking-wider rounded-2xl shadow-2xl shadow-black/50 hover:bg-yellow-300 active:bg-yellow-500 transition-all hover:-translate-y-0.5"
+        >
+          Create Account
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+function AuthScreen({
+  mode,
+  onBack,
+  onSuccess,
+}: {
+  mode: 'login' | 'register';
+  onBack: () => void;
+  onSuccess: () => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [accountType, setAccountType] = useState('Player/Parent');
+  const isLogin = mode === 'login';
+
+  // WARNING: Temporary testing bypass. Hardcoded credential check for QA only —
+  // must be replaced with real authentication before shipping.
+  const TEST_USERNAME = 'CoachChris51';
+  const TEST_PASSWORD = 'TickerisSexy51';
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthenticating(true);
+    setAuthError('');
+
+    setTimeout(() => {
+      if (isLogin) {
+        if (email === TEST_USERNAME && password === TEST_PASSWORD) {
+          onSuccess();
+        } else {
+          setAuthError('Invalid credentials');
+        }
+      } else {
+        // Placeholder auth flow — no backend is wired up yet.
+        // Any valid-looking submission proceeds straight to the search view.
+        onSuccess();
+      }
+      setIsAuthenticating(false);
+    }, 1200);
+  };
+
+  return (
+    <div className="flex items-center justify-center h-[100dvh] bg-[url('/skin.png')] bg-cover bg-center bg-fixed p-5 pt-[max(env(safe-area-inset-top),3rem)]">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-5 border border-stone-100">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-xs font-semibold text-stone-400 hover:text-green-700 uppercase tracking-wider mb-6 flex items-center gap-1"
+        >
+          <ChevronRight className="w-3 h-3 rotate-180" /> Back
+        </button>
+        <div className="w-14 h-14 bg-green-700 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-lg shadow-green-200">
+          <Trophy className="text-white w-7 h-7" />
+        </div>
+        <h2 className="text-xl font-bold text-stone-900 text-center mb-2">
+          {isLogin ? 'Welcome Back' : 'Create Account'}
+        </h2>
+        <p className="text-stone-500 text-center text-sm mb-8">
+          {isLogin ? 'Log in to find your next football camp.' : 'Sign up to start finding football camps.'}
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {!isLogin && (
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Account Type</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['Player', 'Coach', 'Camp'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setAccountType(type)}
+                    className={cn(
+                      "py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide border transition-all",
+                      accountType === type
+                        ? "bg-green-700 border-green-700 text-white shadow-md"
+                        : "bg-stone-50 border-stone-200 text-stone-500 hover:border-green-300 hover:text-green-700"
+                    )}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {!isLogin && (
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Full Name</label>
+              <input
+                type="text"
+                required
+                placeholder="Jane Smith"
+                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-green-600"
+              />
+            </div>
+          )}
+          <div>
+            <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">
+              {isLogin ? 'Username or Email' : 'Email'}
+            </label>
+            <input
+              type={isLogin ? 'text' : 'email'}
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={isLogin ? 'Username or you@example.com' : 'you@example.com'}
+              className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-green-600"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Password</label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-green-600"
+            />
+          </div>
+          {authError && (
+            <p className="text-sm font-semibold text-red-600 text-center -mt-1">{authError}</p>
+          )}
+          <button
+            type="submit"
+            disabled={isAuthenticating}
+            className={cn(
+              "w-full py-4 bg-red-600 text-white text-lg font-extrabold uppercase tracking-wider rounded-2xl shadow-lg shadow-red-300/50 transition-all mt-2 flex items-center justify-center gap-2",
+              isAuthenticating
+                ? "opacity-80 cursor-not-allowed"
+                : "hover:bg-red-700 active:bg-red-800 hover:-translate-y-0.5"
+            )}
+          >
+            {isAuthenticating ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Authenticating...
+              </>
+            ) : (
+              isLogin ? 'Login' : 'Create Account'
+            )}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+
+function CampTypesGuide() {
+  return (
+    <div className="h-full w-full flex overflow-x-auto snap-x snap-mandatory custom-scrollbar pt-[max(env(safe-area-inset-top),3rem)]">
+      {CAMP_TYPE_GUIDE.map((entry, index) => (
+        <div
+          key={entry.type}
+          className="w-full h-full shrink-0 snap-center flex flex-col items-center justify-center px-5 py-10 text-center"
+        >
+          <div className="max-w-md w-full bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-white/40 p-5">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <img src="/helmet.png" alt="" className="w-10 h-10 object-contain" />
+              <span className="text-[11px] font-bold text-stone-400 uppercase tracking-widest">
+                Camp Type {index + 1} / {CAMP_TYPE_GUIDE.length}
+              </span>
+            </div>
+            <div
+              className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center shadow-lg"
+              style={{ backgroundColor: getPinColorForLegend(entry.type) }}
+            >
+              <Trophy className="text-white w-8 h-8" />
+            </div>
+            <span
+              className={cn(
+                'inline-block text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-4',
+                getTypeBadgeClasses(entry.type)
+              )}
+            >
+              {entry.type}
+            </span>
+            <h3 className="text-xl font-extrabold text-stone-900 mb-3">{entry.type} Camps</h3>
+            <p className="text-sm text-stone-600 leading-relaxed">{entry.description}</p>
+            <img src="/helmet-logo.png" alt="FCF Helmet" className="w-24 h-24 object-contain mx-auto mt-6" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface SubscriptionPlan {
+  key: string;
+  name: string;
+  tagline: string;
+  features: string;
+  monthlyPrice: string;
+  yearlyPrice?: string;
+  oneTimePrice?: string;
+}
+
+const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
+  {
+    key: 'baller',
+    name: 'BALLER',
+    tagline: 'Full-Access',
+    features: 'Unlimited Camp Search, Read/Leave reviews.',
+    monthlyPrice: '$8.99/mo',
+    yearlyPrice: '$89.00/yr',
+  },
+  {
+    key: 'starter',
+    name: 'STARTER',
+    tagline: '',
+    features: 'Unlimited Camp Search.',
+    monthlyPrice: '$5.99/mo',
+    yearlyPrice: '$59.00/yr',
+  },
+  {
+    key: 'walk-on',
+    name: 'Walk-on',
+    tagline: '',
+    features: 'One-time 5-State search.',
+    monthlyPrice: '',
+    oneTimePrice: '$1.99',
+  },
+];
+
+function LockerRoomView() {
+  const [name, setName] = useState('Jordan Rivera');
+  const [email, setEmail] = useState('jordan.rivera@example.com');
+  const [bio, setBio] = useState(
+    "6'2\" / 195 lbs — Wide Receiver. 4.52s 40-yard dash, 34\" vertical. Team captain, 2 varsity letters."
+  );
+  const [showSaved, setShowSaved] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    setShowSaved(true);
+    setTimeout(() => setShowSaved(false), 2000);
+  };
+
+  return (
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+      <div className="flex items-center justify-center min-h-full p-5 py-10">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-5 border border-stone-100">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <div className="w-20 h-20 bg-stone-200 rounded-full border-4 border-white shadow-lg mx-auto flex items-center justify-center cursor-pointer text-stone-500 hover:text-green-700">
+              <span className="text-xs font-bold">Upload Pic</span>
+            </div>
+          </div>
+          <h2 className="text-xl font-extrabold text-stone-900 text-center mb-6">My Locker Room</h2>
+
+          <div className="mb-6">
+            <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Subscription Plans</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {SUBSCRIPTION_PLANS.map((plan) => (
+                <button
+                  key={plan.key}
+                  type="button"
+                  onClick={() => setSelectedPlan(plan.key)}
+                  className={cn(
+                    "text-left p-3 rounded-2xl border-2 transition-all",
+                    selectedPlan === plan.key
+                      ? "bg-green-50 border-green-600 shadow-md"
+                      : "bg-stone-50 border-stone-200 hover:border-green-300"
+                  )}
+                >
+                  <div className="font-extrabold text-stone-900 text-sm uppercase tracking-wide">{plan.name}</div>
+                  {plan.tagline && (
+                    <div className="text-[10px] font-bold text-green-700 uppercase tracking-wider mb-1">{plan.tagline}</div>
+                  )}
+                  <p className="text-[11px] text-stone-500 leading-snug mb-2">{plan.features}</p>
+                  {plan.oneTimePrice ? (
+                    <div className="text-xs font-bold text-stone-900">{plan.oneTimePrice}</div>
+                  ) : (
+                    <div className="text-xs font-bold text-stone-900">
+                      {plan.monthlyPrice} <span className="text-stone-400 font-medium">|</span> {plan.yearlyPrice}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <AnimatePresence>
+              {selectedPlan && (
+                <motion.button
+                  type="button"
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="w-full mt-4 py-3 bg-red-600 text-white text-sm font-extrabold uppercase tracking-wider rounded-xl shadow-lg shadow-red-300/50 hover:bg-red-700 active:bg-red-800 transition-all"
+                >
+                  Proceed to Payment Form
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <form onSubmit={handleSave} className="space-y-5">
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-200 rounded-xl text-sm font-medium text-stone-900 focus:outline-none focus:border-green-600 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-200 rounded-xl text-sm font-medium text-stone-900 focus:outline-none focus:border-green-600 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Bio / Player Stats</label>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                rows={4}
+                placeholder="Height, weight, position, 40-yard dash, vertical jump, etc."
+                className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-200 rounded-xl text-sm text-stone-900 focus:outline-none focus:border-green-600 transition-colors resize-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-4 bg-red-600 text-white text-lg font-extrabold uppercase tracking-wider rounded-2xl shadow-lg shadow-red-300/50 hover:bg-red-700 active:bg-red-800 transition-all hover:-translate-y-0.5 mt-2"
+            >
+              Save Changes
+            </button>
+
+            <AnimatePresence>
+              {showSaved && (
+                <motion.p
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="text-center text-sm font-bold text-green-700"
+                >
+                  Saved!
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+interface CampReview {
+  id: string;
+  author: string;
+  rating: number;
+  text: string;
+  date: string;
+}
+
+const DUMMY_REVIEWS: CampReview[] = [
+  {
+    id: 'r1',
+    author: 'Marcus T.',
+    rating: 5,
+    text: 'Coaches were fantastic, really improved my footwork. My son came home every night talking about the drills — worth every penny.',
+    date: 'June 2025',
+  },
+  {
+    id: 'r2',
+    author: 'Angela P.',
+    rating: 4,
+    text: 'Well organized camp with great attention to safety. The only downside was the check-in line took a while on day one, but the coaching more than made up for it.',
+    date: 'July 2025',
+  },
+  {
+    id: 'r3',
+    author: 'DeShawn W.',
+    rating: 5,
+    text: 'My daughter got real one-on-one time with a former college DB and it showed in her technique within a week. Already signed up for next summer.',
+    date: 'August 2025',
+  },
+];
+
+interface PlayerReview {
+  id: string;
+  author: string;
+  text: string;
+  date: string;
+}
+
+const DUMMY_PLAYER_REVIEWS: PlayerReview[] = [
+  {
+    id: 'p1',
+    author: 'Coach Riley',
+    text: 'Great teammate, runs sharp routes and always brings energy to practice.',
+    date: 'June 2025',
+  },
+  {
+    id: 'p2',
+    author: 'Coach Alvarez',
+    text: 'Hard worker with a great attitude. Communicates well with linemen and picks up new schemes fast.',
+    date: 'July 2025',
+  },
+  {
+    id: 'p3',
+    author: 'Coach Nguyen',
+    text: 'Reliable tackler with strong field awareness. A true leader in the defensive backfield.',
+    date: 'August 2025',
+  },
+];
+
+function StarRatingInput({ rating, onRate }: { rating: number; onRate: (value: number) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          onClick={() => onRate(star)}
+          className="p-0.5"
+          aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+        >
+          <Trophy
+            className={cn(
+              'w-6 h-6 transition-colors',
+              star <= rating ? 'text-yellow-400' : 'text-stone-200'
+            )}
+            fill={star <= rating ? 'currentColor' : 'none'}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReviewStars({ rating }: { rating: number }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Trophy
+          key={star}
+          className={cn('w-4 h-4', star <= rating ? 'text-yellow-400' : 'text-stone-200')}
+          fill={star <= rating ? 'currentColor' : 'none'}
+        />
+      ))}
+    </div>
+  );
+}
+
+
+function BottomNav({
+  currentView,
+  onNavigate,
+}: {
+  currentView: ViewType;
+  onNavigate: (view: ViewType) => void;
+}) {
+  return (
+    <nav className="shrink-0 w-full bg-green-700 z-50 flex justify-around p-4 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
+      <button
+        type="button"
+        onClick={() => onNavigate('search')}
+        className={cn(
+          'flex flex-col items-center gap-1 transition-opacity',
+          currentView === 'search' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+        )}
+      >
+        <img src="/football.png" alt="Search" className="w-8 h-8 object-contain" />
+        <span className="text-yellow-400 text-xs font-bold uppercase tracking-wide">Search</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onNavigate('locker')}
+        className={cn(
+          'flex flex-col items-center gap-1 transition-opacity',
+          currentView === 'locker' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+        )}
+      >
+        <img src="/locker.png" alt="Locker Room" className="w-8 h-8 object-contain" />
+        <span className="text-yellow-400 text-xs font-bold uppercase tracking-wide">Locker Room</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onNavigate('guide')}
+        className={cn(
+          'flex flex-col items-center gap-1 transition-opacity',
+          currentView === 'guide' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+        )}
+      >
+        <img src="/helmet.png" alt="Types" className="w-8 h-8 object-contain" />
+        <span className="text-yellow-400 text-xs font-bold uppercase tracking-wide">Types</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onNavigate('reviews')}
+        className={cn(
+          'flex flex-col items-center gap-1 transition-opacity',
+          currentView === 'reviews' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+        )}
+      >
+        <img src="/review.png" alt="Reviews" className="w-10 h-10 object-contain" />
+        <span className="text-yellow-400 text-xs font-bold uppercase tracking-wide">Reviews</span>
+      </button>
+    </nav>
+  );
+}
+
+
+type ReviewScreen = 'hub' | 'read-camp' | 'leave-camp' | 'read-player';
+
+function BackToHubButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1.5 text-sm font-bold text-green-700 hover:text-green-800 mb-4"
+    >
+      <ChevronLeft className="w-4 h-4" />
+      Back to Hub
+    </button>
+  );
+}
+
+function ReviewsView({ selectedCamp }: { selectedCamp: FootballCamp | null }) {
+  const [reviewScreen, setReviewScreen] = useState<ReviewScreen>('hub');
+  const [newRating, setNewRating] = useState(0);
+  const [newReviewText, setNewReviewText] = useState('');
+  const [newReviewLocation, setNewReviewLocation] = useState('');
+  const [newReviewDate, setNewReviewDate] = useState('');
+  const [newReviewCampType, setNewReviewCampType] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  const [campSearchQuery, setCampSearchQuery] = useState('');
+  const [playerReviewSearchQuery, setPlayerReviewSearchQuery] = useState('');
+
+  const handleSubmitReview = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newRating === 0) return;
+    setSubmitted(true);
+    setNewRating(0);
+    setNewReviewText('');
+    setNewReviewLocation('');
+    setNewReviewDate('');
+    setNewReviewCampType('');
+    setTimeout(() => setSubmitted(false), 2500);
+  };
+
+  if (!selectedCamp && (reviewScreen === 'read-camp' || reviewScreen === 'leave-camp')) {
+    return (
+      <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed flex items-center justify-center p-5 pt-[max(env(safe-area-inset-top),3rem)]">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-4 border border-stone-100 text-center">
+          <BackToHubButton onClick={() => setReviewScreen('hub')} />
+          <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 mx-auto text-stone-300">
+            <Search className="w-6 h-6" />
+          </div>
+          <h3 className="font-bold text-stone-900 mb-2 text-lg">No Camp Selected</h3>
+          <p className="text-sm text-stone-500">
+            Please select a camp from the Search tab to view or leave a review.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (reviewScreen === 'read-camp' && selectedCamp) {
+
+  return (
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+      <div className="max-w-2xl mx-auto p-5 py-6 space-y-4">
+        <BackToHubButton onClick={() => setReviewScreen('hub')} />
+        <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
+          <span className={cn(
+            'inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider mb-2',
+            getTypeBadgeClasses(selectedCamp.type)
+          )}>
+            {selectedCamp.type}
+          </span>
+          <h2 className="text-lg font-extrabold text-stone-900">{selectedCamp.name}</h2>
+          <div className="flex items-center gap-1 text-stone-500 text-xs mt-1">
+            <MapPin className="w-3 h-3" />
+            <span>{selectedCamp.address}</span>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {DUMMY_REVIEWS.map((review) => (
+            <div key={review.id} className="bg-white rounded-2xl shadow-md p-4 border border-stone-100">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-bold text-stone-900 text-sm">{review.author}</span>
+                <span className="text-[11px] text-stone-400 font-medium">{review.date}</span>
+              </div>
+              <ReviewStars rating={review.rating} />
+              <p className="text-sm text-stone-600 leading-relaxed mt-3">{review.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+  }
+
+  if (reviewScreen === 'leave-camp' && selectedCamp) {
+  return (
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+      <div className="max-w-2xl mx-auto p-5 py-6 space-y-4">
+        <BackToHubButton onClick={() => setReviewScreen('hub')} />
+        <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
+          <span className={cn(
+            'inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider mb-2',
+            getTypeBadgeClasses(selectedCamp.type)
+          )}>
+            {selectedCamp.type}
+          </span>
+          <h2 className="text-lg font-extrabold text-stone-900">{selectedCamp.name}</h2>
+          <div className="flex items-center gap-1 text-stone-500 text-xs mt-1">
+            <MapPin className="w-3 h-3" />
+            <span>{selectedCamp.address}</span>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
+          <h3 className="font-bold text-stone-900 mb-4 text-lg">Leave a Review</h3>
+          <form onSubmit={handleSubmitReview} className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Camp Location</label>
+              <input
+                type="text"
+                value={newReviewLocation}
+                onChange={(e) => setNewReviewLocation(e.target.value)}
+                placeholder="City, State"
+                className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-200 rounded-xl text-sm text-stone-900 focus:outline-none focus:border-green-600 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Camp Date</label>
+              <input
+                type="date"
+                value={newReviewDate}
+                onChange={(e) => setNewReviewDate(e.target.value)}
+                className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-200 rounded-xl text-sm text-stone-900 focus:outline-none focus:border-green-600 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Camp Type</label>
+              <select
+                value={newReviewCampType}
+                onChange={(e) => setNewReviewCampType(e.target.value)}
+                className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-200 rounded-xl text-sm text-stone-900 focus:outline-none focus:border-green-600 transition-colors"
+              >
+                <option value="">Select a camp type...</option>
+                {CAMP_TYPES.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Your Rating</label>
+              <StarRatingInput rating={newRating} onRate={setNewRating} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Your Review</label>
+              <textarea
+                value={newReviewText}
+                onChange={(e) => setNewReviewText(e.target.value)}
+                rows={4}
+                placeholder="Tell other parents and players about your experience at this camp..."
+                className="w-full px-4 py-3 bg-stone-50 border-2 border-stone-200 rounded-xl text-sm text-stone-900 focus:outline-none focus:border-green-600 transition-colors resize-none"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={newRating === 0}
+              className={cn(
+                "w-full py-3 text-white text-sm font-extrabold uppercase tracking-wider rounded-2xl shadow-lg transition-all",
+                newRating === 0
+                  ? "bg-red-300 shadow-red-100 cursor-not-allowed"
+                  : "bg-red-600 shadow-red-300/50 hover:bg-red-700 active:bg-red-800 hover:-translate-y-0.5"
+              )}
+            >
+              Submit Review
+            </button>
+            <AnimatePresence>
+              {submitted && (
+                <motion.p
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="text-center text-sm font-bold text-green-700"
+                >
+                  Thanks — your review was submitted!
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+  }
+
+  if (reviewScreen === 'read-player') {
+  return (
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+      <div className="max-w-2xl mx-auto p-5 py-6 space-y-4">
+        <BackToHubButton onClick={() => setReviewScreen('hub')} />
+        <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
+          <h2 className="text-lg font-extrabold text-stone-900">Player Reviews</h2>
+          <p className="text-sm text-stone-500 mt-1">Feedback from coaches and camp staff.</p>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-md p-8 border border-stone-100 text-center">
+          <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 mx-auto text-stone-300">
+            <Users className="w-6 h-6" />
+          </div>
+          <p className="text-sm text-stone-500">No player reviews left for this camp.</p>
+        </div>
+      </div>
+    </div>
+  );
+  }
+
+  // Default: 'hub'
+  return (
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+      <div className="max-w-2xl mx-auto p-5 py-6 space-y-4">
+        <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
+          <div className="flex items-center gap-2 mb-1">
+            <Trophy className="w-5 h-5 text-green-700" />
+            <h2 className="text-lg font-extrabold text-stone-900">Camp Reviews</h2>
+          </div>
+          <p className="text-sm text-stone-500 mb-5">
+            {selectedCamp ? `Reviews for ${selectedCamp.name}` : 'Select a camp from Search to read or leave a camp review.'}
+          </p>
+          <input
+            type="text"
+            value={campSearchQuery}
+            onChange={(e) => setCampSearchQuery(e.target.value)}
+            placeholder="Search for a camp to read reviews..."
+            className="w-full mb-4 px-4 py-3 bg-stone-50 border-2 border-stone-200 rounded-xl text-sm text-stone-900 focus:outline-none focus:border-green-600 transition-colors"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={() => setReviewScreen('read-camp')}
+              className="w-full py-3 bg-stone-50 border-2 border-stone-200 text-stone-900 text-sm font-extrabold uppercase tracking-wide rounded-2xl hover:border-green-600 hover:text-green-700 transition-all"
+            >
+              Read Reviews
+            </button>
+            <button
+              type="button"
+              onClick={() => setReviewScreen('leave-camp')}
+              className="w-full py-3 bg-red-600 text-white text-sm font-extrabold uppercase tracking-wide rounded-2xl shadow-lg shadow-red-300/50 hover:bg-red-700 active:bg-red-800 transition-all hover:-translate-y-0.5"
+            >
+              Leave Review
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
+          <div className="flex items-center gap-2 mb-1">
+            <Users className="w-5 h-5 text-green-700" />
+            <h2 className="text-lg font-extrabold text-stone-900">Player Reviews</h2>
+          </div>
+          <p className="text-sm text-stone-500 mb-5">Search for a camp to browse player reviews left by coaches and staff.</p>
+
+          <input
+            type="text"
+            value={playerReviewSearchQuery}
+            onChange={(e) => setPlayerReviewSearchQuery(e.target.value)}
+            placeholder="Search a particular camp for player reviews..."
+            className="w-full mb-5 px-4 py-3 bg-stone-50 border-2 border-stone-200 rounded-xl text-sm text-stone-900 focus:outline-none focus:border-green-600 transition-colors"
+          />
+
+          <button
+            type="button"
+            onClick={() => setReviewScreen('read-player')}
+            className="w-full py-3 bg-stone-50 border-2 border-stone-200 text-stone-900 text-sm font-extrabold uppercase tracking-wide rounded-2xl hover:border-green-600 hover:text-green-700 transition-all"
+          >
+            Read Player Reviews
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function SearchView({
+  selectedCamp,
+  setSelectedCamp,
+}: {
+  selectedCamp: FootballCamp | null;
+  setSelectedCamp: (camp: FootballCamp | null) => void;
+}) {
+  // Draft filters are bound to the UI controls but do NOT affect the map/results
+  // until the user explicitly presses "FIND MY CAMP".
+  const [draftFilters, setDraftFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
+  // appliedFilters is only ever updated by the search button click handler.
+  const [appliedFilters, setAppliedFilters] = useState<SearchFilters | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
+  // isSearching simulates a live database/API fetch delay between clicking
+  // "FIND MY CAMP" and the results actually becoming available.
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
-  const [selectedCamp, setSelectedCamp] = useState<FootballCamp | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isStatesDropdownOpen, setIsStatesDropdownOpen] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -145,130 +1097,366 @@ export default function App() {
     }
   }, []);
 
+  // Clean up any pending simulated-fetch timeout on unmount.
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // The map/list only reflects camps once the user has clicked "FIND MY CAMP".
+  // Changing draftFilters never recomputes this list.
   const filteredCamps = useMemo(() => {
+    if (!appliedFilters) return [];
+
     return CAMP_DATABASE.filter(camp => {
-      // Search query filter
-      const matchesSearch = camp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           camp.description.toLowerCase().includes(searchQuery.toLowerCase());
-      
+      // Camp type filter (pill menu) — empty selection means "all types"
+      const matchesType = appliedFilters.types.length === 0 || appliedFilters.types.includes(camp.type);
+
       // Distance filter
-      let matchesDistance = true;
-      if (userLocation) {
-        const dist = getDistance(userLocation.lat, userLocation.lng, camp.location.lat, camp.location.lng);
-        matchesDistance = dist <= maxDistance;
+      let matchesDistance: boolean;
+      if (appliedFilters.distanceMode === 'local') {
+        // Local mode requires a known user location — without one there is no
+        // radius to measure against, so nothing can match.
+        matchesDistance = Boolean(userLocation) && getDistance(
+          userLocation!.lat, userLocation!.lng, camp.location.lat, camp.location.lng
+        ) <= LOCAL_RADIUS_KM;
+      } else if (appliedFilters.distanceMode === 'states') {
+        // States mode requires at least one selected state — without one there
+        // is nothing to match against.
+        matchesDistance = appliedFilters.states.length > 0 && appliedFilters.states.some(state => {
+          const abbr = US_STATE_ABBREVIATIONS[state];
+          return abbr ? new RegExp(`\\b${abbr}\\b`).test(camp.address) : camp.address.includes(state);
+        });
+      } else {
+        // 'national' imposes no distance restriction.
+        matchesDistance = true;
       }
 
-      // Date range filter
-      const campStart = parseISO(camp.startDate);
-      const campEnd = parseISO(camp.endDate);
-      const filterStart = parseISO(dateRange.start);
-      const filterEnd = parseISO(dateRange.end);
+      // Date range filter (optional — only applied when the user filled in dates)
+      let matchesDate = true;
+      if (appliedFilters.startDate && appliedFilters.endDate) {
+        const campStart = parseISO(camp.startDate);
+        const campEnd = parseISO(camp.endDate);
+        const filterStart = parseISO(appliedFilters.startDate);
+        const filterEnd = parseISO(appliedFilters.endDate);
 
-      const matchesDate = (
-        isWithinInterval(campStart, { start: filterStart, end: filterEnd }) ||
-        isWithinInterval(campEnd, { start: filterStart, end: filterEnd })
-      );
+        matchesDate = (
+          isWithinInterval(campStart, { start: filterStart, end: filterEnd }) ||
+          isWithinInterval(campEnd, { start: filterStart, end: filterEnd })
+        );
+      }
 
-      return matchesSearch && matchesDistance && matchesDate;
+      // Year filter (optional)
+      let matchesYear = true;
+      if (appliedFilters.year) {
+        matchesYear = camp.startDate.startsWith(appliedFilters.year) || camp.endDate.startsWith(appliedFilters.year);
+      }
+
+      return matchesType && matchesDistance && matchesDate && matchesYear;
     });
-  }, [searchQuery, maxDistance, dateRange, userLocation]);
+  }, [appliedFilters, userLocation]);
+
+  const toggleType = useCallback((type: FootballCamp['type']) => {
+    setDraftFilters(prev => ({
+      ...prev,
+      types: prev.types.includes(type)
+        ? prev.types.filter(t => t !== type)
+        : [...prev.types, type],
+    }));
+  }, []);
+
+  const toggleState = useCallback((state: string) => {
+    setDraftFilters(prev => {
+      const isSelected = prev.states.includes(state);
+      if (isSelected) {
+        return { ...prev, states: prev.states.filter(s => s !== state) };
+      }
+      if (prev.states.length >= 5) return prev; // cap at 5 states
+      return { ...prev, states: [...prev.states, state] };
+    });
+  }, []);
+
+  // Simulates hitting a live camps database: shows a loading state for
+  // SEARCH_SIMULATION_MS before the filters are actually applied to the
+  // map/list.
+  const handleFindMyCamp = useCallback(() => {
+    setIsStatesDropdownOpen(false);
+    setIsSearching(true);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      setAppliedFilters(draftFilters);
+      setHasSearched(true);
+      setIsSearching(false);
+      searchTimeoutRef.current = null;
+    }, SEARCH_SIMULATION_MS);
+  }, [draftFilters]);
 
   if (!hasValidKey) {
     return <SplashScreen />;
   }
 
   return (
-    <div className="flex h-screen bg-stone-50 font-sans overflow-hidden">
-      {/* Sidebar */}
-      <motion.div 
-        initial={false}
-        animate={{ width: isSidebarOpen ? 400 : 0, opacity: isSidebarOpen ? 1 : 0 }}
-        className="bg-white border-r border-stone-200 flex flex-col z-20 relative shadow-2xl"
-      >
-        <div className="p-6 border-b border-stone-100 shrink-0">
-          <div className="flex items-center justify-between mb-6">
+    <div className="relative h-full w-full overflow-hidden bg-stone-50 font-sans">
+      <div className="flex flex-col md:flex-row h-full w-full">
+
+      {/* Search Form (left side) */}
+      <div className="w-full md:w-1/2 lg:w-[400px] border-r border-stone-200 bg-white flex flex-col shadow-2xl">
+        <div className="p-4 border-b border-stone-100 shrink-0 overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="w-10 h-10 bg-green-700 rounded-xl flex items-center justify-center shadow-lg shadow-green-200">
                 <Trophy className="text-white w-5 h-5" />
               </div>
               <h1 className="text-xl font-bold text-stone-900">Football Camp Finder</h1>
             </div>
-            <button 
-              onClick={() => setIsSidebarOpen(false)}
-              className="p-2 hover:bg-stone-100 rounded-lg text-stone-400 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
 
-          {/* Search */}
-          <div className="relative mb-6">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-            <input 
-              type="text"
-              placeholder="Search camps, positions..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition-all text-sm"
-            />
+          {/* Top: Camp Type pill menu (vertical list) */}
+          <div className="mb-4">
+            <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Filter className="w-3 h-3" /> Camp Type
+            </label>
+            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pb-2 -mx-1 px-1 custom-scrollbar">
+              {CAMP_TYPES.map((type) => {
+                const isActive = draftFilters.types.includes(type);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => toggleType(type)}
+                    className={cn(
+                      "shrink-0 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wide border transition-all whitespace-nowrap",
+                      isActive
+                        ? "bg-green-700 border-green-700 text-white shadow-md"
+                        : "bg-stone-50 border-stone-200 text-stone-600 hover:border-green-300 hover:text-green-700"
+                    )}
+                  >
+                    {type}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+          {/* Middle: Distance segmented control */}
+          <div className="mb-4">
+            <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Navigation className="w-3 h-3" /> Distance
+            </label>
+            <div className="grid grid-cols-3 gap-1 bg-stone-100 p-1 rounded-xl">
+              {([
+                { key: 'local', label: 'Local (Up to 60 Miles)' },
+                { key: 'states', label: 'States (choose up to 5)' },
+                { key: 'national', label: 'National' },
+              ] as const).map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setDraftFilters(prev => ({ ...prev, distanceMode: option.key }))}
+                  className={cn(
+                    "py-2 rounded-lg text-[10px] leading-tight font-bold uppercase tracking-wide transition-all",
+                    draftFilters.distanceMode === option.key
+                      ? "bg-white text-green-700 shadow-sm"
+                      : "text-stone-500 hover:text-stone-700"
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
 
-          {/* Filters */}
-          <div className="space-y-6">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider flex items-center gap-2">
-                  <Navigation className="w-3 h-3" /> Distance ({maxDistance}km)
-                </label>
+
+            {draftFilters.distanceMode === 'states' && (
+              <div className="mt-3 relative">
+                {isStatesDropdownOpen && (
+                  <div className="fixed inset-0 z-20" onClick={() => setIsStatesDropdownOpen(false)} />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsStatesDropdownOpen(prev => !prev)}
+                  className="relative z-30 w-full flex items-center justify-between px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-600 focus:outline-none"
+                >
+                  <span className="truncate">
+                    {draftFilters.states.length > 0
+                      ? `${draftFilters.states.join(', ')} (${draftFilters.states.length}/5)`
+                      : 'Choose up to 5 states'}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 shrink-0 text-stone-400" />
+                </button>
+                {isStatesDropdownOpen && (
+                  <div className="absolute z-30 mt-1 w-full bg-white border border-stone-200 rounded-lg shadow-xl">
+                    <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                      {US_STATES.map((state) => {
+                        const isSelected = draftFilters.states.includes(state);
+                        const isDisabled = !isSelected && draftFilters.states.length >= 5;
+                        return (
+                          <button
+                            key={state}
+                            type="button"
+                            disabled={isDisabled}
+                            onClick={() => toggleState(state)}
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-xs flex items-center justify-between",
+                              isSelected ? "bg-green-50 text-green-700 font-semibold" : "text-stone-600",
+                              isDisabled ? "opacity-40 cursor-not-allowed" : "hover:bg-stone-50"
+                            )}
+                          >
+                            {state}
+                            {isSelected && <span className="text-green-600">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {draftFilters.states.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsStatesDropdownOpen(false)}
+                        className="w-full py-2.5 bg-green-700 text-white text-xs font-bold uppercase tracking-wider rounded-b-lg hover:bg-green-800 active:bg-green-900 transition-colors"
+                      >
+                        Confirm States
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
+            )}
+          </div>
+
+          {/* Middle-bottom: Date inputs */}
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Start Date</label>
+              <div className="relative">
+                <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
+                <input 
+                  type="date"
+                  value={draftFilters.startDate}
+                  onChange={(e) => setDraftFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                  className="w-full pl-7 pr-2 py-2 bg-stone-50 border border-stone-200 rounded-lg text-[11px] focus:outline-none focus:border-green-600"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">End Date</label>
+              <div className="relative">
+                <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
+                <input 
+                  type="date"
+                  value={draftFilters.endDate}
+                  onChange={(e) => setDraftFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="w-full pl-7 pr-2 py-2 bg-stone-50 border border-stone-200 rounded-lg text-[11px] focus:outline-none focus:border-green-600"
+                />
+              </div>
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Year</label>
               <input 
-                type="range"
-                min="5"
-                max="200"
-                step="5"
-                value={maxDistance}
-                onChange={(e) => setMaxDistance(parseInt(e.target.value))}
-                className="w-full h-1.5 bg-stone-100 rounded-lg appearance-none cursor-pointer accent-green-700"
+                type="number"
+                placeholder="2026"
+                value={draftFilters.year}
+                onChange={(e) => setDraftFilters(prev => ({ ...prev, year: e.target.value }))}
+                className="w-full px-2 py-2 bg-stone-50 border border-stone-200 rounded-lg text-[11px] focus:outline-none focus:border-green-600"
               />
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Start Date</label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
-                  <input 
-                    type="date"
-                    value={dateRange.start}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                    className="w-full pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">End Date</label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
-                  <input 
-                    type="date"
-                    value={dateRange.end}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                    className="w-full pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
-                  />
-                </div>
-              </div>
-            </div>
           </div>
+
+          {/* Bottom: Massive red "FIND MY CAMP" button */}
+          <button
+            type="button"
+            onClick={handleFindMyCamp}
+            disabled={isSearching}
+            className={cn(
+              "w-full py-4 bg-red-600 text-white text-lg font-extrabold uppercase tracking-wider rounded-2xl shadow-lg shadow-red-300/50 transition-all flex items-center justify-center gap-2",
+              isSearching
+                ? "opacity-80 cursor-not-allowed"
+                : "hover:bg-red-700 active:bg-red-800 hover:shadow-xl hover:-translate-y-0.5"
+            )}
+          >
+            {isSearching ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Searching...
+              </>
+            ) : (
+              'Find My Camp'
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowMap(true)}
+            className="w-full mt-3 py-3 bg-stone-800 text-white rounded-xl font-bold uppercase text-sm flex justify-center gap-2"
+          >
+            View on Map
+          </button>
         </div>
 
+
         {/* Camp List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+      </div>
+
+      <div className="flex-1 w-full md:w-1/2 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-stone-50">
           <div className="flex items-center justify-between px-2 mb-2">
-            <span className="text-sm font-medium text-stone-500">{filteredCamps.length} camps found</span>
+            <span className="text-sm font-medium text-stone-500">
+              {isSearching
+                ? 'Searching live camp database...'
+                : hasSearched
+                  ? `${filteredCamps.length} camps found`
+                  : 'Set your filters and search'}
+            </span>
           </div>
           
           <AnimatePresence mode="popLayout">
-            {filteredCamps.length > 0 ? (
+            {isSearching ? (
+              <motion.div
+                key="loading-state"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="space-y-4"
+              >
+                {[0, 1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="p-4 rounded-2xl border border-stone-100 bg-white flex gap-4 animate-pulse"
+                  >
+                    <div className="w-20 h-20 rounded-xl bg-stone-200 shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-2 py-1">
+                      <div className="h-3 w-16 bg-stone-200 rounded-full" />
+                      <div className="h-4 w-3/4 bg-stone-200 rounded" />
+                      <div className="h-3 w-full bg-stone-200 rounded" />
+                      <div className="h-3 w-1/2 bg-stone-200 rounded" />
+                    </div>
+                  </div>
+                ))}
+                <div className="flex items-center justify-center gap-2 text-stone-400 text-xs pt-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Fetching the latest camps near you...
+                </div>
+              </motion.div>
+            ) : !hasSearched ? (
+              <motion.div
+                key="pre-search-state"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                <div className="flex flex-col items-center justify-center py-8 text-center px-6">
+                  <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4 text-stone-300">
+                    <Target className="w-8 h-8" />
+                  </div>
+                  <h3 className="font-bold text-stone-900 mb-1">Ready when you are</h3>
+                  <p className="text-sm text-stone-500">Pick your camp type, distance, and dates above, then press "FIND MY CAMP" to search.</p>
+                </div>
+              </motion.div>
+            ) : filteredCamps.length > 0 ? (
+
               filteredCamps.map((camp) => (
                 <motion.div
                   key={camp.id}
@@ -297,10 +1485,7 @@ export default function App() {
                       <div className="flex items-center gap-2 mb-1">
                         <span className={cn(
                           "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
-                          camp.type === 'Youth' && "bg-emerald-100 text-emerald-700",
-                          camp.type === 'High School' && "bg-green-100 text-green-700",
-                          camp.type === 'Elite' && "bg-amber-100 text-amber-900", // Brownish
-                          camp.type === 'Specialist' && "bg-stone-100 text-stone-700",
+                          getTypeBadgeClasses(camp.type)
                         )}>
                           {camp.type}
                         </span>
@@ -317,9 +1502,20 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                  <a
+                    href={camp.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 bg-green-700 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg hover:bg-green-800 transition-colors"
+                  >
+                    Visit Camp Website
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
                 </motion.div>
               ))
             ) : (
+
               <motion.div
                 key="empty-state"
                 initial={{ opacity: 0, y: 10 }}
@@ -334,60 +1530,22 @@ export default function App() {
                   <h3 className="font-bold text-stone-900 mb-1">No camps found</h3>
                   <p className="text-sm text-stone-500">Try adjusting your filters or search query to find more results.</p>
                 </div>
-
-                <div className="pt-6 border-t border-stone-100">
-                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4 px-2">Sample Academy Preview</h4>
-                  <div className="p-4 rounded-2xl border bg-white border-stone-200 shadow-sm opacity-70 grayscale-[0.5]">
-                    <div className="flex gap-4">
-                      <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-stone-100">
-                    <img 
-                      src="https://picsum.photos/seed/football-preview/800/600" 
-                      alt="Preview Academy" 
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-green-100 text-green-700">
-                            Elite
-                          </span>
-                          <span className="text-xs font-bold text-amber-900 ml-auto">$499</span>
-                        </div>
-                        <h3 className="font-bold text-stone-900 truncate">Championship Prep Academy</h3>
-                        <div className="flex items-center gap-1 text-stone-500 text-xs mt-1">
-                          <MapPin className="w-3 h-3" />
-                          <span className="truncate">555 Victory Lane, Stadium City</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-stone-500 text-xs mt-0.5">
-                          <Calendar className="w-3 h-3" />
-                          <span>Jul 12 - Jul 18, 2026</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-stone-50">
-                      <p className="text-[10px] text-stone-400 italic">This is a preview showing how camp details appear in the list.</p>
-                    </div>
-                  </div>
-                </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Main Content (Map) */}
-      <div className="flex-1 relative">
-        {!isSidebarOpen && (
-          <motion.button
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            onClick={() => setIsSidebarOpen(true)}
-            className="absolute top-6 left-6 z-10 p-3 bg-white rounded-xl shadow-xl border border-stone-100 text-stone-600 hover:text-green-700 transition-colors"
+      {/* Full-screen Map modal — only shown when the user taps "View on Map" */}
+      {showMap && (
+        <div className="absolute inset-0 z-50 bg-stone-50">
+          <button
+            type="button"
+            onClick={() => setShowMap(false)}
+            className="absolute top-[max(env(safe-area-inset-top),1.5rem)] left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-xl border border-stone-100 text-stone-700 font-bold text-sm hover:text-green-700 transition-colors"
           >
-            <ChevronRight className="w-6 h-6" />
-          </motion.button>
-        )}
+            <X className="w-4 h-4" /> Close Map
+          </button>
 
         <APIProvider apiKey={API_KEY} version="weekly">
           <Map
@@ -417,6 +1575,7 @@ export default function App() {
               </AdvancedMarker>
             )}
 
+
             {selectedCamp && (
               <InfoWindow
                 position={selectedCamp.location}
@@ -432,12 +1591,24 @@ export default function App() {
                   />
                   <h3 className="font-bold text-stone-900 mb-1 leading-tight">{selectedCamp.name}</h3>
                   <p className="text-xs text-stone-500 mb-3 line-clamp-2">{selectedCamp.description}</p>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-bold text-amber-900">${selectedCamp.price}</span>
-                    <button className="px-3 py-1.5 bg-green-700 text-white text-[10px] font-bold rounded-lg hover:bg-green-800 transition-colors">
-                      VIEW DETAILS
-                    </button>
+                    <span className={cn(
+                      "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
+                      getTypeBadgeClasses(selectedCamp.type)
+                    )}>
+                      {selectedCamp.type}
+                    </span>
                   </div>
+                  <a
+                    href={selectedCamp.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-green-700 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg hover:bg-green-800 transition-colors"
+                  >
+                    Visit Camp Website
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
                 </div>
               </InfoWindow>
             )}
@@ -445,27 +1616,82 @@ export default function App() {
         </APIProvider>
 
         {/* Map Overlays */}
-        <div className="absolute bottom-10 right-10 flex flex-col gap-3">
-          <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-emerald-500" />
-              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Youth</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-green-600" />
-              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">High School</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-amber-900" />
-              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Elite</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-stone-500" />
-              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Specialist</span>
-            </div>
+        <div className="absolute bottom-10 right-10 flex flex-col gap-3 max-w-[70vw]">
+          <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 flex items-center gap-4 flex-wrap">
+            {CAMP_TYPES.map((type) => (
+              <div key={type} className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: getPinColorForLegend(type) }}
+                />
+                <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">{type}</span>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+export default function App() {
+  const [currentView, setCurrentView] = useState<ViewType>('welcome');
+  const [selectedCamp, setSelectedCamp] = useState<FootballCamp | null>(null);
+
+  return (
+    <>
+      {currentView === 'welcome' && (
+        <WelcomeScreen
+          onLogin={() => setCurrentView('login')}
+          onRegister={() => setCurrentView('register')}
+        />
+      )}
+
+      {currentView === 'login' && (
+        <AuthScreen
+          mode="login"
+          onBack={() => setCurrentView('welcome')}
+          onSuccess={() => setCurrentView('search')}
+        />
+      )}
+
+      {currentView === 'register' && (
+        <AuthScreen
+          mode="register"
+          onBack={() => setCurrentView('welcome')}
+          onSuccess={() => setCurrentView('search')}
+        />
+      )}
+
+      {(currentView === 'search' || currentView === 'guide' || currentView === 'locker' || currentView === 'reviews') && (
+        <div className="flex flex-col h-[100dvh] w-full overflow-hidden bg-[url('/skin.png')] bg-cover bg-fixed">
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {currentView === 'search' && (
+              <div className="h-full relative overflow-hidden">
+                <SearchView selectedCamp={selectedCamp} setSelectedCamp={setSelectedCamp} />
+              </div>
+            )}
+            {currentView === 'guide' && (
+              <div className="h-full overflow-y-auto">
+                <CampTypesGuide />
+              </div>
+            )}
+            {currentView === 'locker' && (
+              <div className="h-full overflow-y-auto">
+                <LockerRoomView />
+              </div>
+            )}
+            {currentView === 'reviews' && (
+              <div className="h-full overflow-y-auto">
+                <ReviewsView selectedCamp={selectedCamp} />
+              </div>
+            )}
+          </div>
+          <BottomNav currentView={currentView} onNavigate={setCurrentView} />
+        </div>
+      )}
 
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar {
@@ -482,6 +1708,7 @@ export default function App() {
           background: #d6d3d1;
         }
       `}} />
-    </div>
+    </>
   );
 }
+
