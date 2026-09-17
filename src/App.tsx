@@ -417,7 +417,7 @@ function AuthScreen({
 
 function CampTypesGuide() {
   return (
-    <div className="h-full w-full flex overflow-x-auto snap-x snap-mandatory custom-scrollbar pt-[max(env(safe-area-inset-top),3rem)]">
+    <div className="h-full w-full flex overflow-x-auto snap-x snap-mandatory custom-scrollbar pt-[max(env(safe-area-inset-top),3rem)] pb-24">
       {CAMP_TYPE_GUIDE.map((entry, index) => (
         <div
           key={entry.type}
@@ -469,7 +469,7 @@ function LockerRoomView() {
   };
 
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-24">
       <div className="flex items-center justify-center min-h-full p-5 py-10">
         <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-5 border border-stone-100">
           <div className="flex items-center justify-center gap-2 mb-6">
@@ -658,7 +658,7 @@ function BottomNav({
   onNavigate: (view: ViewType) => void;
 }) {
   return (
-    <nav className="shrink-0 w-full bg-green-700 z-50 flex justify-around p-4 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
+    <nav className="fixed bottom-0 left-0 w-full z-[100] bg-green-700 flex justify-around p-4 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
       <button
         type="button"
         onClick={() => onNavigate('search')}
@@ -751,7 +751,7 @@ function ReviewsView({ selectedCamp }: { selectedCamp: FootballCamp | null }) {
 
   if (!selectedCamp && (reviewScreen === 'read-camp' || reviewScreen === 'leave-camp')) {
     return (
-      <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed flex items-center justify-center p-5 pt-[max(env(safe-area-inset-top),3rem)]">
+      <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed flex items-center justify-center p-5 pt-[max(env(safe-area-inset-top),3rem)] pb-24">
         <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-4 border border-stone-100 text-center">
           <BackToHubButton onClick={() => setReviewScreen('hub')} />
           <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 mx-auto text-stone-300">
@@ -769,7 +769,7 @@ function ReviewsView({ selectedCamp }: { selectedCamp: FootballCamp | null }) {
   if (reviewScreen === 'read-camp' && selectedCamp) {
 
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-24">
       <div className="max-w-2xl mx-auto p-5 py-6 space-y-4">
         <BackToHubButton onClick={() => setReviewScreen('hub')} />
         <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
@@ -805,7 +805,7 @@ function ReviewsView({ selectedCamp }: { selectedCamp: FootballCamp | null }) {
 
   if (reviewScreen === 'leave-camp' && selectedCamp) {
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-24">
       <div className="max-w-2xl mx-auto p-5 py-6 space-y-4">
         <BackToHubButton onClick={() => setReviewScreen('hub')} />
         <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
@@ -872,7 +872,7 @@ function ReviewsView({ selectedCamp }: { selectedCamp: FootballCamp | null }) {
 
   if (reviewScreen === 'read-player') {
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-24">
       <div className="max-w-2xl mx-auto p-5 py-6 space-y-4">
         <BackToHubButton onClick={() => setReviewScreen('hub')} />
         <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
@@ -898,7 +898,7 @@ function ReviewsView({ selectedCamp }: { selectedCamp: FootballCamp | null }) {
 
   // Default: 'hub'
   return (
-    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+    <div className="flex-1 h-full overflow-y-auto bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-24">
       <div className="max-w-2xl mx-auto p-5 py-6 space-y-4">
         <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
           <div className="flex items-center gap-2 mb-1">
@@ -1127,18 +1127,13 @@ function SearchView({
   return (
     <div className="relative h-full w-full overflow-hidden bg-stone-50 font-sans">
 
-      {/* Backdrop — only shown while the drawer is open, sits above the map but below the drawer */}
-      {isSidebarOpen && (
-        <div className="absolute inset-0 bg-black/50 z-30" onClick={() => setIsSidebarOpen(false)} />
-      )}
-
-      {/* Sidebar — absolute side-drawer overlay */}
+      {/* Search Overlay — full-screen translucent overlay, floats above the permanent background map; scrolls as a single page */}
       <motion.div
         initial={false}
         animate={{ x: isSidebarOpen ? 0 : '-100%' }}
-        className="absolute top-0 left-0 h-full w-[75%] max-w-[280px] z-40 bg-white border-r border-stone-200 flex flex-col shadow-2xl"
+        className="absolute inset-0 z-10 w-full h-full flex flex-col bg-white/90 backdrop-blur-md overflow-y-auto pb-24"
       >
-        <div className="p-4 border-b border-stone-100 shrink-0 overflow-y-auto">
+        <div className="p-4 border-b border-stone-100">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="w-10 h-10 bg-green-700 rounded-xl flex items-center justify-center shadow-lg shadow-green-200">
@@ -1327,7 +1322,7 @@ function SearchView({
 
 
         {/* Camp List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+        <div className="p-4 space-y-4 custom-scrollbar">
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-sm font-medium text-stone-500">
               {isSearching
@@ -1463,7 +1458,7 @@ function SearchView({
       </motion.div>
 
 
-      {/* Main Content (Map) — fills the entire screen, sidebar/backdrop float above it */}
+      {/* Background Map — always rendered full-screen at the bottom layer; the search overlay floats above it */}
       <div className="absolute inset-0 z-0">
         {!isSidebarOpen && (
           <motion.button
