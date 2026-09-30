@@ -248,7 +248,7 @@ function BottomNav({
   onNavigate: (view: ViewType) => void;
 }) {
   return (
-    <nav className="fixed bottom-0 left-0 w-full z-[100] bg-green-700 flex justify-around p-4 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
+    <nav className="fixed bottom-0 left-0 w-full z-[100] bg-green-700 flex justify-around p-4 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-[0_-4px_20px_rgba(0,0,0,0.2)] sm:hidden">
       <button
         type="button"
         onClick={() => onNavigate('search')}
