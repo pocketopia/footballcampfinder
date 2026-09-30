@@ -238,7 +238,91 @@ const LockerRoomModal = ({
   );
 };
 
+type ViewType = 'search' | 'guide' | 'locker' | 'reviews';
+
+function BottomNav({
+  currentView,
+  onNavigate,
+}: {
+  currentView: ViewType;
+  onNavigate: (view: ViewType) => void;
+}) {
+  return (
+    <nav className="fixed bottom-0 left-0 w-full z-[100] bg-green-700 flex justify-around p-4 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
+      <button
+        type="button"
+        onClick={() => onNavigate('search')}
+        className={cn(
+          'flex flex-col items-center gap-1 transition-opacity',
+          currentView === 'search' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+        )}
+      >
+        <img src="/football.png" alt="Search" className="w-8 h-8 object-contain" />
+        <span className="text-yellow-400 text-xs font-bold uppercase tracking-wide">Search</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onNavigate('guide')}
+        className={cn(
+          'flex flex-col items-center gap-1 transition-opacity',
+          currentView === 'guide' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+        )}
+      >
+        <img src="/helmet.png" alt="Types" className="w-8 h-8 object-contain" />
+        <span className="text-yellow-400 text-xs font-bold uppercase tracking-wide">Types</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onNavigate('reviews')}
+        className={cn(
+          'flex flex-col items-center gap-1 transition-opacity',
+          currentView === 'reviews' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+        )}
+      >
+        <img src="/review.png" alt="Reviews" className="w-8 h-8 object-contain" />
+        <span className="text-yellow-400 text-xs font-bold uppercase tracking-wide">Reviews</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onNavigate('locker')}
+        className={cn(
+          'flex flex-col items-center gap-1 transition-opacity',
+          currentView === 'locker' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+        )}
+      >
+        <img src="/locker.png" alt="Locker Room" className="w-8 h-8 object-contain" />
+        <span className="text-yellow-400 text-xs font-bold uppercase tracking-wide">Locker Room</span>
+      </button>
+    </nav>
+  );
+}
+
+function CampTypesGuide() {
+  return (
+    <div className="h-full w-full flex flex-col items-center justify-center px-5 py-10 text-center">
+      <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 text-stone-300">
+        <Trophy className="w-6 h-6" />
+      </div>
+      <h3 className="font-bold text-stone-900 mb-2 text-lg">Camp Types</h3>
+      <p className="text-sm text-stone-500 max-w-xs">No camp type information available yet.</p>
+    </div>
+  );
+}
+
+function ReviewsView() {
+  return (
+    <div className="h-full w-full flex flex-col items-center justify-center px-5 py-10 text-center">
+      <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 text-stone-300">
+        <Users className="w-6 h-6" />
+      </div>
+      <h3 className="font-bold text-stone-900 mb-2 text-lg">Reviews</h3>
+      <p className="text-sm text-stone-500 max-w-xs">No reviews yet.</p>
+    </div>
+  );
+}
+
 export default function App() {
+  const [currentView, setCurrentView] = useState<ViewType>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [maxDistance, setMaxDistance] = useState(50); // km
   const [dateRange, setDateRange] = useState({ 
@@ -348,7 +432,10 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen max-w-full bg-stone-50 font-sans overflow-hidden overflow-x-hidden">
+    <div className="h-screen w-screen max-w-full overflow-hidden flex flex-col bg-stone-50 font-sans">
+    <div className="flex-1 min-h-0 overflow-hidden">
+    {currentView === 'search' && (
+    <div className="flex h-full w-full max-w-full bg-stone-50 font-sans overflow-hidden overflow-x-hidden">
       {/* Sidebar */}
       <motion.div 
         initial={false}
@@ -450,7 +537,7 @@ export default function App() {
         </div>
 
         {/* Camp List */}
-        <div className="flex-1 w-full max-w-full overflow-y-auto overflow-x-hidden p-4 space-y-4 custom-scrollbar box-border">
+        <div className="flex-1 w-full max-w-full overflow-y-auto overflow-x-hidden p-4 pb-24 space-y-4 custom-scrollbar box-border">
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-sm font-medium text-stone-500">{filteredCamps.length} camps found</span>
           </div>
@@ -633,7 +720,7 @@ export default function App() {
         </APIProvider>
 
         {/* Map Overlays */}
-        <div className="absolute bottom-10 right-10 flex flex-col items-end gap-3">
+        <div className="absolute bottom-[max(5.5rem,env(safe-area-inset-bottom))] right-4 sm:bottom-10 sm:right-10 flex flex-col items-end gap-3">
           <button
             onClick={() => setIsLockerRoomOpen(true)}
             className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-white/20 text-stone-700 font-bold text-xs uppercase tracking-wider hover:bg-white transition-colors"
@@ -672,6 +759,24 @@ export default function App() {
           </div>
         </div>
       </div>
+    </div>
+    )}
+
+    {currentView === 'guide' && <CampTypesGuide />}
+
+    {currentView === 'reviews' && <ReviewsView />}
+    </div>
+
+      <BottomNav
+        currentView={currentView}
+        onNavigate={(view) => {
+          if (view === 'locker') {
+            setIsLockerRoomOpen(true);
+          } else {
+            setCurrentView(view);
+          }
+        }}
+      />
 
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar {
