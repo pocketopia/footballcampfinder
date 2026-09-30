@@ -21,14 +21,15 @@ import {
   Zap,
   Target,
   User,
-  Camera
+  Camera,
+  Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, isWithinInterval, parseISO, addDays } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { type FootballCamp } from './data/camps';
-import { collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
 // Utility for tailwind classes
@@ -309,14 +310,186 @@ function CampTypesGuide() {
   );
 }
 
-function ReviewsView() {
+interface Review {
+  id: string;
+  name: string;
+  rating: number;
+  comment: string;
+  createdAt?: any;
+}
+
+function ReviewsView({ profileName }: { profileName: string }) {
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchReviews = useCallback(async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'reviews'));
+      const data = snapshot.docs.map(doc => {
+        const docData = doc.data();
+        return {
+          id: doc.id,
+          name: docData.name || 'Anonymous',
+          rating: docData.rating || 0,
+          comment: docData.comment || '',
+          createdAt: docData.createdAt,
+        } as Review;
+      });
+      data.sort((a, b) => {
+        const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return bTime - aTime;
+      });
+      setReviews(data);
+    } catch (err) {
+      console.error('Failed to fetch reviews from Firestore:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReviews();
+  }, [fetchReviews]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (rating < 1 || rating > 5) {
+      setError('Please select a rating between 1 and 5 stars.');
+      return;
+    }
+    if (!comment.trim()) {
+      setError('Please write a comment before submitting.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await addDoc(collection(db, 'reviews'), {
+        name: profileName?.trim() || 'Anonymous',
+        rating,
+        comment: comment.trim(),
+        createdAt: serverTimestamp(),
+      });
+      setRating(0);
+      setComment('');
+      await fetchReviews();
+    } catch (err) {
+      console.error('Failed to submit review to Firestore:', err);
+      setError('Something went wrong submitting your review. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center px-5 py-10 text-center">
-      <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 text-stone-300">
-        <Users className="w-6 h-6" />
+    <div className="h-full w-full overflow-y-auto custom-scrollbar">
+      <div className="max-w-2xl mx-auto px-5 py-8 space-y-8">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 space-y-4"
+        >
+          <h2 className="text-lg font-bold text-stone-900">Leave a Review</h2>
+
+          <div>
+            <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">
+              Rating
+            </label>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRating(star)}
+                  onMouseEnter={() => setHoverRating(star)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  className="p-1"
+                >
+                  <Star
+                    className={cn(
+                      'w-7 h-7 transition-colors',
+                      (hoverRating || rating) >= star
+                        ? 'fill-amber-400 text-amber-400'
+                        : 'fill-transparent text-stone-300'
+                    )}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">
+              Comment
+            </label>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Share your experience..."
+              rows={3}
+              className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition-all box-border resize-none"
+            />
+          </div>
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-green-700 hover:bg-green-800 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors"
+          >
+            {isSubmitting ? 'Submitting...' : `Submit Review${profileName ? ` as ${profileName}` : ''}`}
+          </button>
+        </form>
+
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <p className="text-sm text-stone-500">Loading reviews...</p>
+          </div>
+        ) : reviews.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 text-stone-300">
+              <Users className="w-6 h-6" />
+            </div>
+            <h3 className="font-bold text-stone-900 mb-2 text-lg">Reviews</h3>
+            <p className="text-sm text-stone-500 max-w-xs">No reviews yet.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {reviews.map((review) => (
+              <div
+                key={review.id}
+                className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5"
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="font-bold text-stone-900 truncate">{review.name}</span>
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={cn(
+                          'w-4 h-4',
+                          review.rating >= star
+                            ? 'fill-amber-400 text-amber-400'
+                            : 'fill-transparent text-stone-300'
+                        )}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-sm text-stone-600 whitespace-pre-wrap">{review.comment}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      <h3 className="font-bold text-stone-900 mb-2 text-lg">Reviews</h3>
-      <p className="text-sm text-stone-500 max-w-xs">No reviews yet.</p>
     </div>
   );
 }
@@ -764,7 +937,7 @@ export default function App() {
 
     {currentView === 'guide' && <CampTypesGuide />}
 
-    {currentView === 'reviews' && <ReviewsView />}
+    {currentView === 'reviews' && <ReviewsView profileName={profile.name} />}
     </div>
 
       <BottomNav
