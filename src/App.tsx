@@ -298,14 +298,85 @@ function BottomNav({
   );
 }
 
+interface CampType {
+  id: string;
+  name: string;
+  description: string;
+  targetAge: string;
+}
+
 function CampTypesGuide() {
-  return (
-    <div className="h-full w-full flex flex-col items-center justify-center px-5 py-10 text-center">
-      <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 text-stone-300">
-        <Trophy className="w-6 h-6" />
+  const [campTypes, setCampTypes] = useState<CampType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchCampTypes() {
+      try {
+        const snapshot = await getDocs(collection(db, 'campTypes'));
+        const data = snapshot.docs.map(doc => {
+          const docData = doc.data();
+          return {
+            id: doc.id,
+            name: docData.name || '',
+            description: docData.description || '',
+            targetAge: docData.targetAge || '',
+          } as CampType;
+        });
+        setCampTypes(data);
+      } catch (error) {
+        console.error('Failed to fetch camp types from Firestore:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchCampTypes();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center px-5 py-10 text-center">
+        <p className="text-sm text-stone-500">Loading camp types...</p>
       </div>
-      <h3 className="font-bold text-stone-900 mb-2 text-lg">Camp Types</h3>
-      <p className="text-sm text-stone-500 max-w-xs">No camp type information available yet.</p>
+    );
+  }
+
+  if (campTypes.length === 0) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center px-5 py-10 text-center">
+        <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 text-stone-300">
+          <Trophy className="w-6 h-6" />
+        </div>
+        <h3 className="font-bold text-stone-900 mb-2 text-lg">Camp Types</h3>
+        <p className="text-sm text-stone-500 max-w-xs">No camp type information available yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full w-full overflow-y-auto custom-scrollbar">
+      <div className="max-w-2xl mx-auto px-5 py-8">
+        <h2 className="text-lg font-bold text-stone-900 mb-6">Camp Types</h2>
+        <div className="space-y-4">
+          {campTypes.map((campType) => (
+            <div
+              key={campType.id}
+              className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5"
+            >
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <h3 className="font-bold text-stone-900">{campType.name}</h3>
+                {campType.targetAge && (
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider bg-green-100 text-green-700 shrink-0 whitespace-nowrap">
+                    {campType.targetAge}
+                  </span>
+                )}
+              </div>
+              {campType.description && (
+                <p className="text-sm text-stone-600 whitespace-pre-wrap">{campType.description}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
