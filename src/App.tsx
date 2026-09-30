@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   APIProvider, 
   Map, 
@@ -19,13 +19,17 @@ import {
   Trophy,
   Users,
   Zap,
-  Target
+  Target,
+  User,
+  Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, isWithinInterval, parseISO, addDays } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { CAMP_DATABASE, type FootballCamp } from './data/camps';
+import { type FootballCamp } from './data/camps';
+import { collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from './lib/firebase';
 
 // Utility for tailwind classes
 function cn(...inputs: ClassValue[]) {
@@ -118,6 +122,122 @@ const SplashScreen = () => (
   </div>
 );
 
+interface LockerRoomProfile {
+  name: string;
+  image: string;
+}
+
+const LockerRoomModal = ({
+  isOpen,
+  onClose,
+  profile,
+  onSave,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  profile: LockerRoomProfile;
+  onSave: (profile: LockerRoomProfile) => void;
+}) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [localName, setLocalName] = useState(profile.name);
+  const [localImage, setLocalImage] = useState(profile.image);
+
+  useEffect(() => {
+    setLocalName(profile.name);
+    setLocalImage(profile.image);
+  }, [profile, isOpen]);
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64String = reader.result as string;
+      setLocalImage(base64String);
+      onSave({ name: localName, image: base64String });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleNameBlur = () => {
+    onSave({ name: localName, image: localImage });
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 20 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm relative"
+        >
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 hover:bg-stone-100 rounded-lg text-stone-400 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <h2 className="text-xl font-bold text-stone-900 text-center mb-6">Locker Room</h2>
+
+          <div className="flex flex-col items-center">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={handleAvatarClick}
+              className="relative w-28 h-28 rounded-full bg-stone-100 border-4 border-white shadow-lg overflow-hidden flex items-center justify-center group mx-auto"
+            >
+              {localImage ? (
+                <img
+                  src={localImage}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <User className="w-12 h-12 text-stone-300" />
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Camera className="w-6 h-6 text-white" />
+              </div>
+            </button>
+
+            <input
+              type="text"
+              value={localName}
+              onChange={(e) => setLocalName(e.target.value)}
+              onBlur={handleNameBlur}
+              placeholder="Enter your name"
+              className="w-full mt-6 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-center font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition-all box-border"
+            />
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [maxDistance, setMaxDistance] = useState(50); // km
@@ -128,6 +248,56 @@ export default function App() {
   const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
   const [selectedCamp, setSelectedCamp] = useState<FootballCamp | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [camps, setCamps] = useState<FootballCamp[]>([]);
+  const [profile, setProfile] = useState<LockerRoomProfile>({ name: '', image: '' });
+  const [isLockerRoomOpen, setIsLockerRoomOpen] = useState(false);
+
+  useEffect(() => {
+    async function fetchProfile() {
+      try {
+        const profileSnap = await getDoc(doc(db, 'users', 'current-user'));
+        if (profileSnap.exists()) {
+          const data = profileSnap.data();
+          setProfile({ name: data.name || '', image: data.image || '' });
+        }
+      } catch (error) {
+        console.error('Failed to fetch profile from Firestore:', error);
+      }
+    }
+    fetchProfile();
+  }, []);
+
+  const handleProfileSave = useCallback(async (updatedProfile: LockerRoomProfile) => {
+    setProfile(updatedProfile);
+    try {
+      await setDoc(
+        doc(db, 'users', 'current-user'),
+        { name: updatedProfile.name, image: updatedProfile.image },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error('Failed to save profile to Firestore:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    async function fetchCamps() {
+      try {
+        const snapshot = await getDocs(collection(db, 'camps'));
+        const data = snapshot.docs.map(doc => {
+          const docData = doc.data();
+          return {
+            ...docData,
+            id: doc.id,
+          } as FootballCamp;
+        });
+        setCamps(data);
+      } catch (error) {
+        console.error('Failed to fetch camps from Firestore:', error);
+      }
+    }
+    fetchCamps();
+  }, []);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -146,7 +316,7 @@ export default function App() {
   }, []);
 
   const filteredCamps = useMemo(() => {
-    return CAMP_DATABASE.filter(camp => {
+    return camps.filter(camp => {
       // Search query filter
       const matchesSearch = camp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            camp.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -171,45 +341,63 @@ export default function App() {
 
       return matchesSearch && matchesDistance && matchesDate;
     });
-  }, [searchQuery, maxDistance, dateRange, userLocation]);
+  }, [camps, searchQuery, maxDistance, dateRange, userLocation]);
 
   if (!hasValidKey) {
     return <SplashScreen />;
   }
 
   return (
-    <div className="flex h-screen bg-stone-50 font-sans overflow-hidden">
+    <div className="flex h-screen w-screen max-w-full bg-stone-50 font-sans overflow-hidden overflow-x-hidden">
       {/* Sidebar */}
       <motion.div 
         initial={false}
         animate={{ width: isSidebarOpen ? '100%' : 0, opacity: isSidebarOpen ? 1 : 0 }}
-        className="bg-white border-r border-stone-200 flex flex-col z-20 relative shadow-2xl max-w-[100vw] sm:max-w-[400px] shrink-0"
+        className="w-full max-w-full md:max-w-[400px] bg-white border-r border-stone-200 flex flex-col z-20 relative shadow-2xl overflow-x-hidden shrink-0 box-border"
       >
-        <div className="p-6 border-b border-stone-100 shrink-0">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-green-700 rounded-xl flex items-center justify-center shadow-lg shadow-green-200">
+        <div className="p-6 border-b border-stone-100 shrink-0 overflow-x-hidden">
+          <div className="flex items-center justify-between mb-6 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-10 h-10 bg-green-700 rounded-xl flex items-center justify-center shadow-lg shadow-green-200 shrink-0">
                 <Trophy className="text-white w-5 h-5" />
               </div>
-              <h1 className="text-xl font-bold text-stone-900">Football Camp Finder</h1>
+              <h1 className="text-xl font-bold text-stone-900 truncate">Football Camp Finder</h1>
             </div>
-            <button 
-              onClick={() => setIsSidebarOpen(false)}
-              className="p-2 hover:bg-stone-100 rounded-lg text-stone-400 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => setIsLockerRoomOpen(true)}
+                title="Locker Room"
+                className="w-9 h-9 rounded-full bg-stone-100 border border-stone-200 overflow-hidden flex items-center justify-center hover:border-green-400 transition-colors shrink-0"
+              >
+                {profile.image ? (
+                  <img
+                    src={profile.image}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <User className="w-4 h-4 text-stone-400" />
+                )}
+              </button>
+              <button 
+                onClick={() => setIsSidebarOpen(false)}
+                className="p-2 hover:bg-stone-100 rounded-lg text-stone-400 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Search */}
-          <div className="relative mb-6">
+          <div className="relative mb-6 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
             <input 
               type="text"
               placeholder="Search camps, positions..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition-all text-sm"
+              className="w-full box-border pl-10 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition-all text-sm"
             />
           </div>
 
@@ -241,7 +429,7 @@ export default function App() {
                     type="date"
                     value={dateRange.start}
                     onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                    className="w-full pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
+                    className="w-full max-w-full box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
                   />
                 </div>
               </div>
@@ -253,7 +441,7 @@ export default function App() {
                     type="date"
                     value={dateRange.end}
                     onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                    className="w-full pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
+                    className="w-full max-w-full box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
                   />
                 </div>
               </div>
@@ -262,7 +450,7 @@ export default function App() {
         </div>
 
         {/* Camp List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+        <div className="flex-1 w-full max-w-full overflow-y-auto overflow-x-hidden p-4 space-y-4 custom-scrollbar box-border">
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-sm font-medium text-stone-500">{filteredCamps.length} camps found</span>
           </div>
@@ -377,7 +565,7 @@ export default function App() {
       </motion.div>
 
       {/* Main Content (Map) */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative overflow-hidden min-w-0">
         {!isSidebarOpen && (
           <motion.button
             initial={{ opacity: 0, x: -20 }}
@@ -445,7 +633,25 @@ export default function App() {
         </APIProvider>
 
         {/* Map Overlays */}
-        <div className="absolute bottom-10 right-10 flex flex-col gap-3">
+        <div className="absolute bottom-10 right-10 flex flex-col items-end gap-3">
+          <button
+            onClick={() => setIsLockerRoomOpen(true)}
+            className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-white/20 text-stone-700 font-bold text-xs uppercase tracking-wider hover:bg-white transition-colors"
+          >
+            <div className="w-6 h-6 rounded-full bg-stone-100 overflow-hidden flex items-center justify-center shrink-0">
+              {profile.image ? (
+                <img
+                  src={profile.image}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <User className="w-3 h-3 text-stone-400" />
+              )}
+            </div>
+            Locker Room
+          </button>
           <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 flex items-center gap-6">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-emerald-500" />
@@ -482,6 +688,13 @@ export default function App() {
           background: #d6d3d1;
         }
       `}} />
+
+      <LockerRoomModal
+        isOpen={isLockerRoomOpen}
+        onClose={() => setIsLockerRoomOpen(false)}
+        profile={profile}
+        onSave={handleProfileSave}
+      />
     </div>
   );
 }
