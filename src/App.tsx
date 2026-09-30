@@ -182,8 +182,8 @@ export default function App() {
       {/* Sidebar */}
       <motion.div 
         initial={false}
-        animate={{ width: isSidebarOpen ? 400 : 0, opacity: isSidebarOpen ? 1 : 0 }}
-        className="bg-white border-r border-stone-200 flex flex-col z-20 relative shadow-2xl"
+        animate={{ width: isSidebarOpen ? '100%' : 0, opacity: isSidebarOpen ? 1 : 0 }}
+        className="bg-white border-r border-stone-200 flex flex-col z-20 relative shadow-2xl max-w-[100vw] sm:max-w-[400px] shrink-0"
       >
         <div className="p-6 border-b border-stone-100 shrink-0">
           <div className="flex items-center justify-between mb-6">
