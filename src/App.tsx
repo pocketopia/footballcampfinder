@@ -460,6 +460,7 @@ function ReviewsView({ profileName }: { profileName: string }) {
     }
   };
 
+
   return (
     <div className="h-full w-full overflow-y-auto custom-scrollbar">
       <div className="max-w-2xl mx-auto px-5 py-8 space-y-8">
@@ -520,6 +521,7 @@ function ReviewsView({ profileName }: { profileName: string }) {
           </button>
         </form>
 
+
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-10 text-center">
             <p className="text-sm text-stone-500">Loading reviews...</p>
@@ -569,13 +571,13 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [maxDistance, setMaxDistance] = useState(50); // km
-  const [dateRange, setDateRange] = useState({ 
+  const [dateRange, setDateRange] = useState({
     start: format(new Date(), 'yyyy-MM-dd'),
     end: format(addDays(new Date(), 90), 'yyyy-MM-dd')
   });
   const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
   const [selectedCamp, setSelectedCamp] = useState<FootballCamp | null>(null);
-  const [showMap, setShowMap] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [camps, setCamps] = useState<FootballCamp[]>([]);
   const [profile, setProfile] = useState<LockerRoomProfile>({ name: '', image: '' });
   const [isLockerRoomOpen, setIsLockerRoomOpen] = useState(false);
@@ -648,7 +650,7 @@ export default function App() {
       // Search query filter
       const matchesSearch = camp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            camp.description.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       // Distance filter
       let matchesDistance = true;
       if (userLocation) {
@@ -675,45 +677,56 @@ export default function App() {
     return <SplashScreen />;
   }
 
+
   return (
     <div className="h-screen w-screen max-w-full overflow-hidden flex flex-col bg-stone-50 font-sans">
     <div className="flex-1 min-h-0 overflow-hidden">
     {currentView === 'search' && (
-    <div className="relative h-full w-full max-w-full overflow-hidden bg-stone-50 font-sans">
-      <div className="flex flex-col md:flex-row h-full w-full max-w-full overflow-hidden">
-
-      {/* Search Form (left side) */}
-      <div className="w-full md:w-1/2 lg:w-[400px] max-w-full border-r border-stone-200 bg-white flex flex-col shadow-2xl overflow-x-hidden box-border">
-        <div className="p-4 border-b border-stone-100 shrink-0 overflow-y-auto overflow-x-hidden">
-          <div className="flex items-center justify-between mb-4 gap-2">
+    <div className="flex h-full w-full max-w-full bg-stone-50 font-sans overflow-hidden overflow-x-hidden">
+      {/* Sidebar */}
+      <motion.div
+        initial={false}
+        animate={{ width: isSidebarOpen ? '100%' : 0, opacity: isSidebarOpen ? 1 : 0 }}
+        className="w-full max-w-[100vw] sm:max-w-[400px] bg-white border-r border-stone-200 flex flex-col z-20 relative shadow-2xl overflow-x-hidden shrink-0 box-border"
+      >
+        <div className="p-6 border-b border-stone-100 shrink-0 overflow-x-hidden">
+          <div className="flex items-center justify-between mb-6 gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-10 h-10 bg-green-700 rounded-xl flex items-center justify-center shadow-lg shadow-green-200 shrink-0">
                 <Trophy className="text-white w-5 h-5" />
               </div>
               <h1 className="text-xl font-bold text-stone-900 truncate">Football Camp Finder</h1>
             </div>
-            <button
-              onClick={() => setIsLockerRoomOpen(true)}
-              title="Locker Room"
-              className="w-9 h-9 rounded-full bg-stone-100 border border-stone-200 overflow-hidden flex items-center justify-center hover:border-green-400 transition-colors shrink-0"
-            >
-              {profile.image ? (
-                <img
-                  src={profile.image}
-                  alt="Profile"
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <User className="w-4 h-4 text-stone-400" />
-              )}
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => setIsLockerRoomOpen(true)}
+                title="Locker Room"
+                className="w-9 h-9 rounded-full bg-stone-100 border border-stone-200 overflow-hidden flex items-center justify-center hover:border-green-400 transition-colors shrink-0"
+              >
+                {profile.image ? (
+                  <img
+                    src={profile.image}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <User className="w-4 h-4 text-stone-400" />
+                )}
+              </button>
+              <button
+                onClick={() => setIsSidebarOpen(false)}
+                className="p-2 hover:bg-stone-100 rounded-lg text-stone-400 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Search */}
-          <div className="relative mb-4 w-full">
+          <div className="relative mb-6 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-            <input 
+            <input
               type="text"
               placeholder="Search camps, positions..."
               value={searchQuery}
@@ -722,15 +735,16 @@ export default function App() {
             />
           </div>
 
+
           {/* Filters */}
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider flex items-center gap-2">
                   <Navigation className="w-3 h-3" /> Distance ({maxDistance}km)
                 </label>
               </div>
-              <input 
+              <input
                 type="range"
                 min="5"
                 max="200"
@@ -741,51 +755,42 @@ export default function App() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Start Date</label>
                 <div className="relative">
-                  <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
-                  <input 
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
+                  <input
                     type="date"
                     value={dateRange.start}
                     onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                    className="w-full max-w-full box-border pl-7 pr-2 py-2 bg-stone-50 border border-stone-200 rounded-lg text-[11px] focus:outline-none focus:border-green-600"
+                    className="w-full max-w-full box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
                   />
                 </div>
               </div>
               <div>
                 <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">End Date</label>
                 <div className="relative">
-                  <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
-                  <input 
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
+                  <input
                     type="date"
                     value={dateRange.end}
                     onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                    className="w-full max-w-full box-border pl-7 pr-2 py-2 bg-stone-50 border border-stone-200 rounded-lg text-[11px] focus:outline-none focus:border-green-600"
+                    className="w-full max-w-full box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
                   />
                 </div>
               </div>
             </div>
           </div>
-
-          {/* View on Map toggle */}
-          <button
-            type="button"
-            onClick={() => setShowMap(true)}
-            className="w-full mt-4 py-3 bg-stone-800 text-white rounded-xl font-bold uppercase text-sm flex justify-center gap-2"
-          >
-            View on Map
-          </button>
         </div>
-      </div>
 
-      {/* Search Results (right side) */}
-      <div className="flex-1 w-full md:w-1/2 max-w-full overflow-y-auto overflow-x-hidden p-4 pb-24 space-y-4 custom-scrollbar bg-stone-50 box-border">
+        {/* Camp List */}
+        <div className="flex-1 w-full max-w-full overflow-y-auto overflow-x-hidden p-4 pb-24 space-y-4 custom-scrollbar box-border">
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-sm font-medium text-stone-500">{filteredCamps.length} camps found</span>
           </div>
-          
+
+
           <AnimatePresence mode="popLayout">
             {filteredCamps.length > 0 ? (
               filteredCamps.map((camp) => (
@@ -798,16 +803,16 @@ export default function App() {
                   onClick={() => setSelectedCamp(camp)}
                   className={cn(
                     "group p-4 rounded-2xl border transition-all cursor-pointer",
-                    selectedCamp?.id === camp.id 
-                      ? "bg-green-50 border-green-200 shadow-md" 
+                    selectedCamp?.id === camp.id
+                      ? "bg-green-50 border-green-200 shadow-md"
                       : "bg-white border-stone-100 hover:border-stone-200 hover:shadow-sm"
                   )}
                 >
                   <div className="flex gap-4">
                     <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-stone-100">
-                      <img 
-                        src={camp.image} 
-                        alt={camp.name} 
+                      <img
+                        src={camp.image}
+                        alt={camp.name}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         referrerPolicy="no-referrer"
                       />
@@ -818,7 +823,7 @@ export default function App() {
                           "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
                           camp.type === 'Youth' && "bg-emerald-100 text-emerald-700",
                           camp.type === 'High School' && "bg-green-100 text-green-700",
-                          camp.type === 'Elite' && "bg-amber-100 text-amber-900", // Brownish
+                          camp.type === 'Elite' && "bg-amber-100 text-amber-900",
                           camp.type === 'Specialist' && "bg-stone-100 text-stone-700",
                         )}>
                           {camp.type}
@@ -857,20 +862,23 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Full-screen Map modal — only shown when the user taps "View on Map" */}
-      {showMap && (
-        <div className="absolute inset-0 z-50 bg-stone-50">
-          <button
-            type="button"
-            onClick={() => setShowMap(false)}
-            className="absolute top-[max(env(safe-area-inset-top),1.5rem)] left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-xl border border-stone-100 text-stone-700 font-bold text-sm hover:text-green-700 transition-colors"
+
+      {/* Main Content (Map) */}
+      <div className="flex-1 relative overflow-hidden min-w-0">
+        {!isSidebarOpen && (
+          <motion.button
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            onClick={() => setIsSidebarOpen(true)}
+            className="absolute top-6 left-6 z-10 p-3 bg-white rounded-xl shadow-xl border border-stone-100 text-stone-600 hover:text-green-700 transition-colors"
           >
-            <X className="w-4 h-4" /> Close Map
-          </button>
+            <ChevronRight className="w-6 h-6" />
+          </motion.button>
+        )}
 
-          <APIProvider apiKey={API_KEY} version="weekly">
+        <APIProvider apiKey={API_KEY} version="weekly">
           <Map
             defaultCenter={DEFAULT_CENTER}
             defaultZoom={DEFAULT_ZOOM}
@@ -882,10 +890,10 @@ export default function App() {
             gestureHandling={'greedy'}
           >
             {filteredCamps.map(camp => (
-              <CampMarker 
-                key={camp.id} 
-                camp={camp} 
-                onClick={() => setSelectedCamp(camp)} 
+              <CampMarker
+                key={camp.id}
+                camp={camp}
+                onClick={() => setSelectedCamp(camp)}
               />
             ))}
 
@@ -905,9 +913,9 @@ export default function App() {
                 headerDisabled
               >
                 <div className="p-1 max-w-[240px]">
-                  <img 
-                    src={selectedCamp.image} 
-                    alt={selectedCamp.name} 
+                  <img
+                    src={selectedCamp.image}
+                    alt={selectedCamp.name}
                     className="w-full h-32 object-cover rounded-lg mb-3"
                     referrerPolicy="no-referrer"
                   />
@@ -923,50 +931,50 @@ export default function App() {
               </InfoWindow>
             )}
           </Map>
-          </APIProvider>
+        </APIProvider>
 
-          {/* Map Overlays */}
-          <div className="absolute bottom-[max(5.5rem,env(safe-area-inset-bottom))] right-4 sm:bottom-10 sm:right-10 flex flex-col items-end gap-3">
-            <button
-              onClick={() => setIsLockerRoomOpen(true)}
-              className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-white/20 text-stone-700 font-bold text-xs uppercase tracking-wider hover:bg-white transition-colors"
-            >
-              <div className="w-6 h-6 rounded-full bg-stone-100 overflow-hidden flex items-center justify-center shrink-0">
-                {profile.image ? (
-                  <img
-                    src={profile.image}
-                    alt="Profile"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <User className="w-3 h-3 text-stone-400" />
-                )}
-              </div>
-              Locker Room
-            </button>
-            <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Youth</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-600" />
-                <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">High School</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-amber-900" />
-                <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Elite</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-stone-500" />
-                <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Specialist</span>
-              </div>
+
+        {/* Map Overlays */}
+        <div className="absolute bottom-[max(5.5rem,env(safe-area-inset-bottom))] right-4 sm:bottom-10 sm:right-10 flex flex-col items-end gap-3">
+          <button
+            onClick={() => setIsLockerRoomOpen(true)}
+            className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-white/20 text-stone-700 font-bold text-xs uppercase tracking-wider hover:bg-white transition-colors"
+          >
+            <div className="w-6 h-6 rounded-full bg-stone-100 overflow-hidden flex items-center justify-center shrink-0">
+              {profile.image ? (
+                <img
+                  src={profile.image}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <User className="w-3 h-3 text-stone-400" />
+              )}
+            </div>
+            Locker Room
+          </button>
+          <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-emerald-500" />
+              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Youth</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-green-600" />
+              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">High School</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-amber-900" />
+              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Elite</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-stone-500" />
+              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Specialist</span>
             </div>
           </div>
         </div>
-      )}
       </div>
+    </div>
     )}
 
     {currentView === 'guide' && <CampTypesGuide />}
@@ -984,6 +992,7 @@ export default function App() {
           }
         }}
       />
+
 
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar {
@@ -1010,3 +1019,5 @@ export default function App() {
     </div>
   );
 }
+
+
