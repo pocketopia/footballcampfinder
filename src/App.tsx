@@ -657,7 +657,7 @@ function CampTypesGuide() {
   ];
 
   return (
-    <div className="h-full w-full max-w-[100vw] flex flex-row overflow-x-auto overflow-y-hidden snap-x snap-mandatory custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+    <div className="h-full w-full max-w-[100vw] flex flex-row overflow-x-auto overflow-y-hidden snap-x snap-mandatory custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-32">
       {campTypes.map((campType, index) => (
         <div
           key={campType.id}
@@ -794,7 +794,7 @@ function ReviewsView({ profileName, isAdmin }: { profileName: string; isAdmin: b
   }, [reviews, campReviewSearch]);
 
   return (
-    <div className="h-full w-full max-w-[100vw] overflow-x-hidden overflow-y-auto custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
+    <div className="h-full w-full max-w-[100vw] overflow-x-hidden overflow-y-auto custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-32">
       <div className="max-w-2xl mx-auto px-5 pt-8 pb-32 space-y-6">
         <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
           <div className="flex items-center gap-2 mb-1">
@@ -1142,14 +1142,14 @@ export default function App() {
 
 
   return (
-    <div className="h-screen w-screen max-w-[100vw] overflow-hidden flex flex-col bg-stone-50 font-sans">
+    <div className="h-screen w-screen max-w-[100vw] overflow-hidden flex flex-col bg-stone-50 font-sans pt-[max(env(safe-area-inset-top),3rem)]">
     <div className="flex-1 min-h-0 overflow-hidden">
     {currentView === 'search' && (
     <div className="relative h-full w-full max-w-[100vw] overflow-hidden bg-stone-50 font-sans">
     <div className="flex flex-row h-full w-full max-w-[100vw]">
 
       {/* Search Form (left side) */}
-      <div className="w-1/2 h-full max-w-[100vw] border-r border-stone-200 bg-white flex flex-col shadow-2xl overflow-x-hidden overflow-y-auto">
+      <div className="w-1/2 h-full max-w-[100vw] border-r border-stone-200 bg-white flex flex-col shadow-2xl overflow-x-hidden overflow-y-auto pb-32">
         <div className="p-4 border-b border-stone-100 shrink-0 overflow-y-auto overflow-x-hidden">
           <div className="flex items-center justify-between mb-4 gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -1226,7 +1226,7 @@ export default function App() {
               <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <Navigation className="w-3 h-3" /> Distance
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {(['LOCAL', 'STATES', 'NATIONAL'] as const).map((tier) => (
                   <button
                     key={tier}
@@ -1237,6 +1237,7 @@ export default function App() {
                     }}
                     className={cn(
                       'py-2.5 rounded-xl border text-xs font-bold uppercase tracking-wide transition-colors',
+                      tier === 'NATIONAL' && 'col-span-2',
                       distanceTier === tier
                         ? 'bg-green-700 border-green-700 text-white'
                         : 'bg-stone-50 border-stone-200 text-stone-700 hover:border-green-400'
@@ -1249,7 +1250,7 @@ export default function App() {
               <p className="text-[11px] text-stone-400 mt-2">(Up to 60 Miles)</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-4">
               <div>
                 <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Start Date</label>
                 <div className="relative">
@@ -1274,7 +1275,7 @@ export default function App() {
                   />
                 </div>
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Year</label>
                 <div className="relative">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
@@ -1309,7 +1310,7 @@ export default function App() {
       </div>
 
       {/* Camp List (right side) */}
-      <div ref={resultsPanelRef} className="w-1/2 h-full max-w-[100vw] overflow-y-auto overflow-x-hidden p-4 space-y-4 custom-scrollbar bg-stone-50 box-border">
+      <div ref={resultsPanelRef} className="w-1/2 h-full max-w-[100vw] overflow-y-auto overflow-x-hidden p-4 pb-32 space-y-4 custom-scrollbar bg-stone-50 box-border">
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-sm font-medium text-stone-500">{filteredCamps.length} camps found</span>
           </div>
@@ -1333,7 +1334,7 @@ export default function App() {
                   )}
                 >
                   <div className="flex gap-4">
-                    <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-stone-100">
+                    <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-stone-100">
                       <img
                         src={camp.image}
                         alt={camp.name}
@@ -1363,20 +1364,20 @@ export default function App() {
                         <Calendar className="w-3 h-3" />
                         <span>{format(parseISO(camp.startDate), 'MMM d')} - {format(parseISO(camp.endDate), 'MMM d, yyyy')}</span>
                       </div>
+                      {camp.websiteUrl && (
+                        <a
+                          href={camp.websiteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 bg-green-700 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg hover:bg-green-800 transition-colors"
+                        >
+                          Visit Camp Website
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
                     </div>
                   </div>
-                  {camp.websiteUrl && (
-                    <a
-                      href={camp.websiteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 bg-green-700 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg hover:bg-green-800 transition-colors"
-                    >
-                      Visit Camp Website
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
                 </motion.div>
               ))
             ) : (
