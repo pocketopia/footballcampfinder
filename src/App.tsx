@@ -795,7 +795,7 @@ function ReviewsView({ profileName, isAdmin }: { profileName: string; isAdmin: b
 
   return (
     <div className="h-full w-full max-w-[100vw] overflow-x-hidden overflow-y-auto custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)]">
-      <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
+      <div className="max-w-2xl mx-auto px-5 pt-8 pb-32 space-y-6">
         <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
           <div className="flex items-center gap-2 mb-1">
             <Trophy className="w-5 h-5 text-green-700" />
