@@ -9,6 +9,7 @@ export interface FootballCamp {
   description: string;
   image: string;
   type: 'Youth' | 'High School' | 'Elite' | 'Specialist';
+  websiteUrl?: string;
 }
 
 

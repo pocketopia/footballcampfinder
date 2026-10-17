@@ -7,3 +7,8 @@ coverage/
 .env*
 !.env.example
 .vercel
+Football Camp Finder-Assets/
+football-camp-finder.zip
+Football Camps-Master List.xlsx
+.venv/
+

@@ -63,32 +63,74 @@ interface CampTypeSeed {
 
 const campTypes: CampTypeSeed[] = [
   {
-    slug: 'youth-fundamentals',
-    name: 'Youth Fundamentals',
-    targetAge: 'Ages 8-12',
+    slug: 'specialty',
+    name: 'Specialty',
+    targetAge: 'Kickers / Punters / Long-Snappers',
     description:
-      'A fun, high-energy introduction to the game built around athletic development and core football fundamentals — proper stance, footwork, ball security, and basic route running. Coaches emphasize safety, sportsmanship, and building confidence through small-group drills and non-contact skill stations, giving young players a strong foundation before they step onto a competitive field.',
+      'Specifically designed for kickers, punters and long-snappers. Each camp site will have its own specifics, be sure to check their website.These camps are a great way for high school kickers & punters and special-teamers to receive intensive, position-specific training by college coaches. Players will gain exposure, be able to evaluate and perform against competition, and improve their skills in the off-season.',
   },
   {
-    slug: 'high-school-combine',
-    name: 'High School Combine',
-    targetAge: 'Ages 13-18',
+    slug: 'youth',
+    name: 'Youth',
+    targetAge: 'Ages 6-12',
     description:
-      'A performance-based combine designed to benchmark and sharpen the athletic tools college and high school coaches look for. Athletes are timed and evaluated in the 40-yard dash, vertical jump, pro agility shuttle, and position-specific drills, then receive a personalized performance report with actionable feedback to guide their off-season training.',
+      'Typically consists of ages 6-12, or elementary school age. Each camp site will have its own specifics, be sure to check their website. Entry-level camps designed to teach basic fundamentals and rules of the game in a fun low-pressure environment. These camps should be based on athletic and mental development and sportsmanship, not competition.',
   },
   {
-    slug: 'elite-prospect',
-    name: 'Elite Prospect',
-    targetAge: 'Ages 16-18',
+    slug: 'lineman-big-man',
+    name: 'Lineman / Big-Man',
+    targetAge: 'High School',
     description:
-      'An invite-caliber camp for serious college prospects, featuring 1-on-1 and 7-on-7 competition in front of current and former college coaching staff. Sessions focus on advanced scheme reads, recruiting exposure, and film-backed feedback, giving top-tier juniors and seniors a genuine platform to showcase their game to recruiters.',
+      'Camps specifically designed for offensive & defensive lineman. Each camp site will have its own specifics, be sure to check their website.These camps are a great way for high school linemen to receive intensive, position-specific training by college coaches or former professional players. Athletes will gain exposure, be able to evaluate and perform against competition, and improve their skills, agility, techniques and conditioning in the off-season.',
   },
   {
-    slug: 'specialist-position',
-    name: 'Specialist Position',
+    slug: 'prospect',
+    name: 'Prospect',
+    targetAge: 'High School',
+    description:
+      'Advanced 1-day camps held by colleges or private companies to evaluate high school players. Athletes will display their skills through combine testing, metrics, drills and competition to gain high exposure and experience. These camps are also used as a legal way for colleges to recruit specific talent and talk to underclassmen they have interest in. They are typically run and coached by the hosting college coaching staff or a private company may rent a field at a local high school for the day.',
+  },
+  {
+    slug: 'team',
+    name: 'Team',
+    targetAge: 'High School Teams',
+    description:
+      'For high school teams. Each camp site will have its own specifics, be sure to check their website.These camps are a great way for high school teams to train together, condition, improve team chemistry, evaluate new or young players in action against competition, and install new plays and schemes. Team camps are typically held at colleges or universities and run by college coaching staffs.',
+  },
+  {
+    slug: '7on7',
+    name: '7on7',
+    targetAge: 'High School Teams',
+    description:
+      'These camps are passing-focused, non-contact, highly-competitive tournaments for team play. 7 on 7 camps held at colleges are typically run by the hosting coaching staff and can be used as a platform to evaluate prospects and talent. However, exposure is not as high as a Mega camp, Showcase or Prospect camp.Most of these events typically conclude with bracket-stye playoffs and awarded champions.',
+  },
+  {
+    slug: 'qb-passing',
+    name: 'QB/Passing',
+    targetAge: 'Quarterbacks / Receivers',
+    description:
+      'Camps specifically dedicated for quarterbacks, but are usually accompanied with receivers. Each camp site will have its own specifics, be sure to check their website.These camps are a great way for high school quarterbacks to receive intensive, position-specific training by college coaches. Expect drills with a high-focus on mechanics, footwork, accuracy and route throwing, typically ending with competition. Athletes will gain exposure and good preparation for the upcoming season.',
+  },
+  {
+    slug: 'mega-showcase',
+    name: 'Mega/Showcase',
+    targetAge: 'High School',
+    description:
+      'MEGA CAMPS: Large-scale advanced camps typically held at colleges. They often feature combine-style testing (40-Yard dash, Pro Agility, Broad Jump). Players will perform through drills and competition in front of various visiting colleges to gain high exposure and experience. Expect hundreds of athletes in attendance. SHOWCASES: Open or invite-only advanced camps that may be hosted by a single college or feature several colleges, with media and metrics to evaluate players through combine testing, drills and competition. Players gain exposure and experience. Expect large numbers of athletes in attendance.',
+  },
+  {
+    slug: 'middle-school',
+    name: 'Middle School',
+    targetAge: 'Grades 6-8',
+    description:
+      'Typically consists of 6th-8th grade. Each camp site will have its own specifics, be sure to check their website.These camps will teach fundamentals and be somewhat competitive. Coaches will begin to teach more position-specific drills. They are a great way to learn the game before the season or polish/improve skills for more advanced players. These camps can be more award and goal-oriented.',
+  },
+  {
+    slug: 'flag',
+    name: 'Flag',
     targetAge: 'All Ages',
     description:
-      'A focused technical camp for kickers, punters, and long snappers led by specialist coaches with collegiate and professional experience. Athletes work on mechanics, consistency, and mental approach through video breakdown, repetition-based drilling, and live-pressure reps, rounding out a skill set that is often overlooked at general camps.',
+      'Camps can be exclusively for girls, boys or coed. Each camp site will have its own specifics, be sure to check their website.Look for these camps to teach game rules and fundamental skills. They are non-contact and can help beginner, intermediate or advanced players. They can be competitive, depending upon age requirements. Coaches will begin to teach more position-specific drills, plays and schemes while focusing on development.',
   },
 ];
 

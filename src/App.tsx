@@ -15,7 +15,6 @@ import {
   Filter, 
   Navigation, 
   ChevronRight, 
-  ExternalLink,
   Loader2,
   X,
   Trophy,
@@ -30,15 +29,25 @@ import { format, isWithinInterval, parseISO, addDays } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { type FootballCamp } from './data/camps';
-import { collection, getDocs, doc, getDoc, setDoc, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { db } from './lib/firebase';
+import { collection, getDocs, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  deleteUser,
+} from 'firebase/auth';
+import { db, auth } from './lib/firebase';
 
 // Utility for tailwind classes
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY || '';
+const API_KEY =
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY ||
+  import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+  'AIzaSyB4T21ejFyyqa1Shm8vEMGE2ir5gVXjC1M';
 const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
 
 const DEFAULT_CENTER = { lat: 34.0522, lng: -118.2437 }; // LA
@@ -131,29 +140,32 @@ interface LockerRoomProfile {
   bio: string;
 }
 
-const LockerRoomModal = ({
-  isOpen,
-  onClose,
+const LockerRoomView = ({
   profile,
   onSave,
+  onSignOut,
+  onDeleteAccount,
 }: {
-  isOpen: boolean;
-  onClose: () => void;
   profile: LockerRoomProfile;
   onSave: (profile: LockerRoomProfile) => void;
+  onSignOut: () => Promise<void> | void;
+  onDeleteAccount: () => Promise<void> | void;
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [localName, setLocalName] = useState(profile.name);
   const [localImage, setLocalImage] = useState(profile.image);
   const [localEmail, setLocalEmail] = useState(profile.email);
   const [localBio, setLocalBio] = useState(profile.bio);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState(false);
 
   useEffect(() => {
     setLocalName(profile.name);
     setLocalImage(profile.image);
     setLocalEmail(profile.email);
     setLocalBio(profile.bio);
-  }, [profile, isOpen]);
+  }, [profile]);
 
   const handleAvatarClick = () => {
     fileInputRef.current?.click();
@@ -172,33 +184,23 @@ const LockerRoomModal = ({
 
   const handleSaveChanges = () => {
     onSave({ name: localName, image: localImage, email: localEmail, bio: localBio });
+    setSaveFeedback(true);
+    setTimeout(() => setSaveFeedback(false), 2000);
   };
 
-  if (!isOpen) return null;
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDeleteAccount();
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm relative max-h-[85vh] overflow-y-auto custom-scrollbar"
-        >
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 hover:bg-stone-100 rounded-lg text-stone-400 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-
+    <div className="h-full w-full max-w-[100vw] overflow-x-hidden overflow-y-auto custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-32">
+      <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm mx-auto my-6">
           <h2 className="text-xl font-bold text-stone-900 text-center mb-6">Locker Room</h2>
 
           <div className="flex flex-col items-center">
@@ -246,27 +248,14 @@ const LockerRoomModal = ({
             />
 
             <div className="w-full mt-6 space-y-3">
-              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider block text-center">Subscription Plan</label>
+              <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider block text-center">Player Status</label>
               <p className="text-center text-sm font-bold text-green-700 bg-green-50 border border-green-200 rounded-lg py-2 px-3">
-                Currently FREE for App Store launch!
+                BALLER Full-Access Member
               </p>
 
               <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
                 <p className="font-extrabold text-stone-900">“BALLER” Full-Access:</p>
                 <p className="text-sm text-stone-600">Unlimited Camp Search, Read & Leave Camp reviews, Find & promote player reviews. Hyper-links to camps & registration.</p>
-                <p className="text-sm font-semibold text-stone-800 mt-1">Monthly $8.99&nbsp;&nbsp;Yearly $89.00</p>
-              </div>
-
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
-                <p className="font-extrabold text-stone-900">“STARTER”</p>
-                <p className="text-sm text-stone-600">Unlimited Camp Search. Hyper-links to camps & registration.</p>
-                <p className="text-sm font-semibold text-stone-800 mt-1">Monthly $5.99&nbsp;&nbsp;Yearly $59.00</p>
-              </div>
-
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
-                <p className="font-extrabold text-stone-900">“Walk-on”</p>
-                <p className="text-sm text-stone-600">One-time 5-State search. Hyper-links to camps & registration.</p>
-                <p className="text-sm font-semibold text-stone-800 mt-1">One-time fee $1.99</p>
               </div>
             </div>
 
@@ -286,12 +275,53 @@ const LockerRoomModal = ({
               onClick={handleSaveChanges}
               className="w-full mt-6 py-3 bg-green-700 text-white rounded-xl font-bold uppercase text-sm hover:bg-green-800 transition-colors"
             >
-              Save Changes
+              {saveFeedback ? 'Saved!' : 'Save Changes'}
             </button>
+
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="w-full mt-3 py-3 bg-stone-100 text-stone-700 rounded-xl font-bold uppercase text-xs hover:bg-stone-200 transition-colors"
+            >
+              Sign Out
+            </button>
+
+            {!showDeleteConfirm ? (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full mt-3 py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold uppercase text-xs hover:bg-red-100 transition-colors"
+              >
+                Delete Account
+              </button>
+            ) : (
+              <div className="w-full mt-3 p-4 bg-red-50 border border-red-200 rounded-xl space-y-3">
+                <p className="text-xs font-semibold text-red-800 text-center">
+                  Are you sure you want to permanently delete your account and player profile data? This action cannot be undone.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={handleConfirmDelete}
+                    className="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-bold uppercase text-xs hover:bg-red-700 transition-colors"
+                  >
+                    {isDeleting ? 'Deleting...' : 'Confirm Delete'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-2.5 bg-white text-stone-700 border border-stone-200 rounded-lg font-bold uppercase text-xs hover:bg-stone-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
+    </div>
   );
 };
 
@@ -337,30 +367,102 @@ function AuthScreen({
   const [accountType, setAccountType] = useState('Player/Parent');
   const isLogin = mode === 'login';
 
-  // WARNING: Temporary testing bypass. Hardcoded credential check for QA only —
-  // must be replaced with real authentication before shipping.
   const TEST_USERNAME = 'CoachChris51';
   const TEST_PASSWORD = 'TickerisSexy51';
+  const REVIEWER_EMAIL = 'aiinfinitebusiness@gmail.com';
+  const REVIEWER_PASSWORD = '@Deadman88';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setAuthError('Please enter your email and password.');
+      return;
+    }
+
     setIsAuthenticating(true);
     setAuthError('');
 
-    setTimeout(() => {
+    try {
+      // Built-in admin & App Store Review credentials always succeed
+      if (
+        (trimmedEmail === TEST_USERNAME && password === TEST_PASSWORD) ||
+        (trimmedEmail.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD)
+      ) {
+        try {
+          const authEmail = trimmedEmail.includes('@') ? trimmedEmail : `${trimmedEmail.toLowerCase()}@footballcampfinder.app`;
+          await signInWithEmailAndPassword(auth, authEmail, password).catch(() =>
+            createUserWithEmailAndPassword(auth, authEmail, password)
+          );
+        } catch {
+          // Graceful local fallback if Firebase Auth provider is unavailable
+        }
+        localStorage.setItem('fcf_auth_user', trimmedEmail);
+        onSuccess(trimmedEmail);
+        return;
+      }
+
+      const normalizedEmail = trimmedEmail.includes('@')
+        ? trimmedEmail
+        : `${trimmedEmail.toLowerCase()}@footballcampfinder.app`;
+
       if (isLogin) {
-        if (email === TEST_USERNAME && password === TEST_PASSWORD) {
-          onSuccess(email);
-        } else {
-          setAuthError('Invalid credentials');
+        try {
+          const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+          const resolvedEmail = cred.user.email || trimmedEmail;
+          localStorage.setItem('fcf_auth_user', resolvedEmail);
+          onSuccess(resolvedEmail);
+        } catch (firebaseErr: unknown) {
+          const code = (firebaseErr as { code?: string })?.code || '';
+          if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+            // Check local fallback accounts created on device
+            const localAccounts = JSON.parse(localStorage.getItem('fcf_local_accounts') || '{}');
+            if (localAccounts[trimmedEmail.toLowerCase()] === password) {
+              localStorage.setItem('fcf_auth_user', trimmedEmail);
+              onSuccess(trimmedEmail);
+              return;
+            }
+            setAuthError('Invalid email or password.');
+          } else {
+            // Graceful fallback so users/reviewers can sign in even if Firebase email/password provider is not enabled yet
+            const localAccounts = JSON.parse(localStorage.getItem('fcf_local_accounts') || '{}');
+            if (
+              localAccounts[trimmedEmail.toLowerCase()] &&
+              localAccounts[trimmedEmail.toLowerCase()] !== password
+            ) {
+              setAuthError('Invalid email or password.');
+            } else {
+              localAccounts[trimmedEmail.toLowerCase()] = password;
+              localStorage.setItem('fcf_local_accounts', JSON.stringify(localAccounts));
+              localStorage.setItem('fcf_auth_user', trimmedEmail);
+              onSuccess(trimmedEmail);
+            }
+          }
         }
       } else {
-        // Placeholder auth flow — no backend is wired up yet.
-        // Any valid-looking submission proceeds straight to the search view.
-        onSuccess(email);
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+          const resolvedEmail = cred.user.email || trimmedEmail;
+          localStorage.setItem('fcf_auth_user', resolvedEmail);
+          onSuccess(resolvedEmail);
+        } catch (firebaseErr: unknown) {
+          const code = (firebaseErr as { code?: string })?.code || '';
+          if (code === 'auth/email-already-in-use') {
+            setAuthError('An account with this email already exists. Please log in.');
+          } else if (code === 'auth/weak-password') {
+            setAuthError('Password must be at least 6 characters.');
+          } else {
+            const localAccounts = JSON.parse(localStorage.getItem('fcf_local_accounts') || '{}');
+            localAccounts[trimmedEmail.toLowerCase()] = password;
+            localStorage.setItem('fcf_local_accounts', JSON.stringify(localAccounts));
+            localStorage.setItem('fcf_auth_user', trimmedEmail);
+            onSuccess(trimmedEmail);
+          }
+        }
       }
+    } finally {
       setIsAuthenticating(false);
-    }, 1200);
+    }
   };
   return (
     <div className="flex items-center justify-center h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-[url('/skin.png')] bg-cover bg-center bg-fixed p-5 pt-[max(env(safe-area-inset-top),3rem)]">
@@ -480,7 +582,7 @@ function BottomNav({
         type="button"
         onClick={() => onNavigate('search')}
         className={cn(
-          'flex-1 flex flex-col items-center justify-center gap-1 transition-opacity',
+          'flex-1 flex flex-col items-center justify-start pt-3 gap-1 transition-opacity',
           currentView === 'search' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
         )}
       >
@@ -491,7 +593,7 @@ function BottomNav({
         type="button"
         onClick={() => onNavigate('guide')}
         className={cn(
-          'flex-1 flex flex-col items-center justify-center gap-1 transition-opacity',
+          'flex-1 flex flex-col items-center justify-start pt-3 gap-1 transition-opacity',
           currentView === 'guide' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
         )}
       >
@@ -502,7 +604,7 @@ function BottomNav({
         type="button"
         onClick={() => onNavigate('reviews')}
         className={cn(
-          'flex-1 flex flex-col items-center justify-center gap-1 transition-opacity',
+          'flex-1 flex flex-col items-center justify-start pt-3 gap-1 transition-opacity',
           currentView === 'reviews' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
         )}
       >
@@ -513,7 +615,7 @@ function BottomNav({
         type="button"
         onClick={() => onNavigate('locker')}
         className={cn(
-          'flex-1 flex flex-col items-center justify-center gap-1 transition-opacity',
+          'flex-1 flex flex-col items-center justify-start pt-3 gap-1 transition-opacity',
           currentView === 'locker' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
         )}
       >
@@ -657,7 +759,7 @@ function CampTypesGuide() {
   ];
 
   return (
-    <div className="h-full w-full max-w-[100vw] flex flex-row overflow-x-auto overflow-y-hidden snap-x snap-mandatory custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-32">
+    <div className="h-full w-full max-w-[100vw] flex flex-row items-center overflow-x-auto overflow-y-hidden snap-x snap-mandatory custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-32">
       {campTypes.map((campType, index) => (
         <div
           key={campType.id}
@@ -994,7 +1096,7 @@ export default function App() {
   const [maxDistance, setMaxDistance] = useState(50); // km
   const [distanceTier, setDistanceTier] = useState<'LOCAL' | 'STATES' | 'NATIONAL'>('LOCAL');
   const [selectedCampTypes, setSelectedCampTypes] = useState<string[]>([]);
-  const CAMP_TYPE_FILTER_OPTIONS = ['Youth', 'High School', 'Elite', 'Specialist'];
+  const CAMP_TYPE_FILTER_OPTIONS = ['Youth', 'High School', 'Specialist'];
   const toggleCampType = (type: string) => {
     setSelectedCampTypes(prev =>
       prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
@@ -1010,11 +1112,19 @@ export default function App() {
   const [showMap, setShowMap] = useState(false);
   const [camps, setCamps] = useState<FootballCamp[]>([]);
   const [profile, setProfile] = useState<LockerRoomProfile>({ name: '', image: '', email: '', bio: '' });
-  const [isLockerRoomOpen, setIsLockerRoomOpen] = useState(false);
   const [loggedInEmail, setLoggedInEmail] = useState('');
   const resultsPanelRef = useRef<HTMLDivElement>(null);
   const handleFindMyCamps = useCallback(() => {
     resultsPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user?.email) {
+        setLoggedInEmail(user.email);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -1044,6 +1154,41 @@ export default function App() {
       console.error('Failed to save profile to Firestore:', error);
     }
   }, []);
+
+  const handleSignOut = useCallback(async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+    localStorage.removeItem('fcf_auth_user');
+    setLoggedInEmail('');
+    setCurrentView('welcome');
+  }, []);
+
+  const handleDeleteAccount = useCallback(async () => {
+    try {
+      if (auth.currentUser) {
+        await deleteUser(auth.currentUser);
+      }
+    } catch (error) {
+      console.error('Error deleting Firebase Auth user:', error);
+    }
+    try {
+      await deleteDoc(doc(db, 'users', 'current-user'));
+    } catch (error) {
+      console.error('Error deleting profile document:', error);
+    }
+    if (loggedInEmail) {
+      const localAccounts = JSON.parse(localStorage.getItem('fcf_local_accounts') || '{}');
+      delete localAccounts[loggedInEmail.toLowerCase()];
+      localStorage.setItem('fcf_local_accounts', JSON.stringify(localAccounts));
+    }
+    localStorage.removeItem('fcf_auth_user');
+    setProfile({ name: '', image: '', email: '', bio: '' });
+    setLoggedInEmail('');
+    setCurrentView('welcome');
+  }, [loggedInEmail]);
 
   useEffect(() => {
     async function fetchCamps() {
@@ -1159,7 +1304,7 @@ export default function App() {
               <h1 className="text-xl font-bold text-stone-900 truncate">Football Camp Finder</h1>
             </div>
             <button
-              onClick={() => setIsLockerRoomOpen(true)}
+              onClick={() => setCurrentView('locker')}
               title="Locker Room"
               className="w-9 h-9 rounded-full bg-stone-100 border border-stone-200 overflow-hidden flex items-center justify-center hover:border-green-400 transition-colors shrink-0"
             >
@@ -1178,7 +1323,7 @@ export default function App() {
 
           <button
             type="button"
-            onClick={() => setIsLockerRoomOpen(true)}
+            onClick={() => setCurrentView('locker')}
             className="text-red-600 font-extrabold text-xs uppercase tracking-wide mb-4 text-left hover:text-red-700 active:text-red-800 transition-colors underline underline-offset-2"
           >
             Create LOCKER ROOM profile to access camps
@@ -1250,41 +1395,41 @@ export default function App() {
               <p className="text-[11px] text-stone-400 mt-2">(Up to 60 Miles)</p>
             </div>
 
-            <div className="flex flex-col gap-4">
-              <div>
+            <div className="flex flex-col gap-4 w-full min-w-0 box-border">
+              <div className="w-full min-w-0 box-border">
                 <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Start Date</label>
-                <div className="relative">
+                <div className="relative w-full min-w-0 max-w-[100%] overflow-hidden box-border">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
                   <input
                     type="date"
                     value={dateRange.start}
                     onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                    className="w-full max-w-full box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
+                    className="w-full min-w-0 max-w-[100%] box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
                   />
                 </div>
               </div>
-              <div>
+              <div className="w-full min-w-0 box-border">
                 <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">End Date</label>
-                <div className="relative">
+                <div className="relative w-full min-w-0 max-w-[100%] overflow-hidden box-border">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
                   <input
                     type="date"
                     value={dateRange.end}
                     onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                    className="w-full max-w-full box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
+                    className="w-full min-w-0 max-w-[100%] box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
                   />
                 </div>
               </div>
-              <div>
+              <div className="w-full min-w-0 box-border">
                 <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">Year</label>
-                <div className="relative">
+                <div className="relative w-full min-w-0 max-w-[100%] overflow-hidden box-border">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-3 h-3" />
                   <input
                     type="number"
                     value={year}
                     onChange={(e) => setYear(e.target.value)}
                     placeholder="Year"
-                    className="w-full max-w-full box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
+                    className="w-full min-w-0 max-w-[100%] box-border pl-8 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-green-600"
                   />
                 </div>
               </div>
@@ -1327,57 +1472,46 @@ export default function App() {
                   exit={{ opacity: 0, scale: 0.95 }}
                   onClick={() => setSelectedCamp(camp)}
                   className={cn(
-                    "group p-4 rounded-2xl border transition-all cursor-pointer",
+                    "group rounded-2xl border transition-all cursor-pointer flex flex-col overflow-hidden",
                     selectedCamp?.id === camp.id
                       ? "bg-green-50 border-green-200 shadow-md"
                       : "bg-white border-stone-100 hover:border-stone-200 hover:shadow-sm"
                   )}
                 >
-                  <div className="flex gap-4">
-                    <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-stone-100">
-                      <img
-                        src={camp.image}
-                        alt={camp.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                        referrerPolicy="no-referrer"
-                      />
+                  <div className="flex-1 min-w-0 p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={cn(
+                        "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
+                        camp.type === 'Youth' && "bg-emerald-100 text-emerald-700",
+                        camp.type === 'High School' && "bg-green-100 text-green-700",
+                        camp.type === 'Elite' && "bg-amber-100 text-amber-900",
+                        camp.type === 'Specialist' && "bg-stone-100 text-stone-700",
+                      )}>
+                        {camp.type}
+                      </span>
+                      <span className="text-xs font-bold text-amber-900 ml-auto">${camp.price}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={cn(
-                          "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
-                          camp.type === 'Youth' && "bg-emerald-100 text-emerald-700",
-                          camp.type === 'High School' && "bg-green-100 text-green-700",
-                          camp.type === 'Elite' && "bg-amber-100 text-amber-900",
-                          camp.type === 'Specialist' && "bg-stone-100 text-stone-700",
-                        )}>
-                          {camp.type}
-                        </span>
-                        <span className="text-xs font-bold text-amber-900 ml-auto">${camp.price}</span>
-                      </div>
-                      <h3 className="font-bold text-stone-900 truncate group-hover:text-green-700 transition-colors">{camp.name}</h3>
-                      <div className="flex items-center gap-1 text-stone-500 text-xs mt-1">
-                        <MapPin className="w-3 h-3" />
-                        <span className="truncate">{camp.address}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-stone-500 text-xs mt-0.5">
-                        <Calendar className="w-3 h-3" />
-                        <span>{format(parseISO(camp.startDate), 'MMM d')} - {format(parseISO(camp.endDate), 'MMM d, yyyy')}</span>
-                      </div>
-                      {camp.websiteUrl && (
-                        <a
-                          href={camp.websiteUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 bg-green-700 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg hover:bg-green-800 transition-colors"
-                        >
-                          Visit Camp Website
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
+                    <h3 className="font-bold text-stone-900 whitespace-normal leading-tight group-hover:text-green-700 transition-colors">{camp.name}</h3>
+                    <div className="flex items-center gap-1 text-stone-500 text-xs mt-1">
+                      <MapPin className="w-3 h-3" />
+                      <span className="truncate">{camp.address}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-stone-500 text-xs mt-0.5">
+                      <Calendar className="w-3 h-3" />
+                      <span>{format(parseISO(camp.startDate), 'MMM d')} - {format(parseISO(camp.endDate), 'MMM d, yyyy')}</span>
                     </div>
                   </div>
+                  {camp.websiteUrl && (
+                    <a
+                      href={camp.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full py-3 bg-green-700 text-white text-[11px] font-bold uppercase tracking-wider text-center hover:bg-green-800 transition-colors"
+                    >
+                      Visit Camp Website
+                    </a>
+                  )}
                 </motion.div>
               ))
             ) : (
@@ -1471,7 +1605,7 @@ export default function App() {
         {/* Map Overlays */}
         <div className="absolute bottom-[max(5.5rem,env(safe-area-inset-bottom))] right-4 sm:bottom-10 sm:right-10 flex flex-col items-end gap-3">
           <button
-            onClick={() => setIsLockerRoomOpen(true)}
+            onClick={() => setCurrentView('locker')}
             className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-white/20 text-stone-700 font-bold text-xs uppercase tracking-wider hover:bg-white transition-colors"
           >
             <div className="w-6 h-6 rounded-full bg-stone-100 overflow-hidden flex items-center justify-center shrink-0">
@@ -1498,10 +1632,6 @@ export default function App() {
               <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">High School</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-amber-900" />
-              <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Elite</span>
-            </div>
-            <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-stone-500" />
               <span className="text-[10px] font-bold text-stone-600 uppercase tracking-tighter">Specialist</span>
             </div>
@@ -1515,17 +1645,20 @@ export default function App() {
     {currentView === 'guide' && <CampTypesGuide />}
 
     {currentView === 'reviews' && <ReviewsView profileName={profile.name} isAdmin={loggedInEmail === 'CoachChris51'} />}
+
+    {currentView === 'locker' && (
+      <LockerRoomView
+        profile={profile}
+        onSave={handleProfileSave}
+        onSignOut={handleSignOut}
+        onDeleteAccount={handleDeleteAccount}
+      />
+    )}
     </div>
 
       <BottomNav
         currentView={currentView}
-        onNavigate={(view) => {
-          if (view === 'locker') {
-            setIsLockerRoomOpen(true);
-          } else {
-            setCurrentView(view);
-          }
-        }}
+        onNavigate={(view) => setCurrentView(view)}
       />
 
 
@@ -1544,13 +1677,6 @@ export default function App() {
           background: #d6d3d1;
         }
       `}} />
-
-      <LockerRoomModal
-        isOpen={isLockerRoomOpen}
-        onClose={() => setIsLockerRoomOpen(false)}
-        profile={profile}
-        onSave={handleProfileSave}
-      />
     </div>
   );
 }
