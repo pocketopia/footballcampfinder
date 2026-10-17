@@ -240,10 +240,10 @@ const LockerRoomView = ({
             />
 
             <input
-              type="email"
+              type="text"
               value={localEmail}
               onChange={(e) => setLocalEmail(e.target.value)}
-              placeholder="Enter your email"
+              placeholder="Email or Username"
               className="w-full mt-4 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-center text-stone-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition-all box-border"
             />
 
@@ -367,16 +367,25 @@ function AuthScreen({
   const [accountType, setAccountType] = useState('Player/Parent');
   const isLogin = mode === 'login';
 
-  const TEST_USERNAME = 'CoachChris51';
-  const TEST_PASSWORD = 'TickerisSexy51';
+  const TEST_HANDLES = ['coachchris51', '@coachchris51'];
+  const TEST_PASSWORDS = ['@TickerisSexy51', 'TickerisSexy51'];
   const REVIEWER_EMAIL = 'aiinfinitebusiness@gmail.com';
   const REVIEWER_PASSWORD = '@Deadman88';
+
+  const toFirebaseEmail = (input: string) => {
+    const trimmed = input.trim();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return trimmed.toLowerCase();
+    }
+    const cleanHandle = trimmed.replace(/^@+/, '').toLowerCase();
+    return `${cleanHandle}@footballcampfinder.app`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !password) {
-      setAuthError('Please enter your email and password.');
+      setAuthError('Please enter your email or username and password.');
       return;
     }
 
@@ -384,55 +393,65 @@ function AuthScreen({
     setAuthError('');
 
     try {
+      const normalizedEmail = toFirebaseEmail(trimmedEmail);
+      const isCoachDemo =
+        (TEST_HANDLES.includes(trimmedEmail.toLowerCase()) ||
+          normalizedEmail === 'coachchris51@footballcampfinder.app') &&
+        TEST_PASSWORDS.includes(password);
+      const isReviewerDemo =
+        trimmedEmail.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD;
+
       // Built-in admin & App Store Review credentials always succeed
-      if (
-        (trimmedEmail === TEST_USERNAME && password === TEST_PASSWORD) ||
-        (trimmedEmail.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD)
-      ) {
+      if (isCoachDemo || isReviewerDemo) {
+        const displayIdentifier = isCoachDemo
+          ? trimmedEmail.startsWith('@') || !trimmedEmail.includes('@')
+            ? trimmedEmail
+            : '@CoachChris51'
+          : trimmedEmail;
         try {
-          const authEmail = trimmedEmail.includes('@') ? trimmedEmail : `${trimmedEmail.toLowerCase()}@footballcampfinder.app`;
-          await signInWithEmailAndPassword(auth, authEmail, password).catch(() =>
-            createUserWithEmailAndPassword(auth, authEmail, password)
+          await signInWithEmailAndPassword(auth, normalizedEmail, password).catch(() =>
+            createUserWithEmailAndPassword(auth, normalizedEmail, password)
           );
         } catch {
           // Graceful local fallback if Firebase Auth provider is unavailable
         }
-        localStorage.setItem('fcf_auth_user', trimmedEmail);
-        onSuccess(trimmedEmail);
+        localStorage.setItem('fcf_auth_user', displayIdentifier);
+        onSuccess(displayIdentifier);
         return;
       }
-
-      const normalizedEmail = trimmedEmail.includes('@')
-        ? trimmedEmail
-        : `${trimmedEmail.toLowerCase()}@footballcampfinder.app`;
 
       if (isLogin) {
         try {
           const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-          const resolvedEmail = cred.user.email || trimmedEmail;
-          localStorage.setItem('fcf_auth_user', resolvedEmail);
-          onSuccess(resolvedEmail);
+          const resolvedIdentifier =
+            /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
+              ? cred.user.email || trimmedEmail
+              : trimmedEmail;
+          localStorage.setItem('fcf_auth_user', resolvedIdentifier);
+          onSuccess(resolvedIdentifier);
         } catch (firebaseErr: unknown) {
           const code = (firebaseErr as { code?: string })?.code || '';
           if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-            // Check local fallback accounts created on device
             const localAccounts = JSON.parse(localStorage.getItem('fcf_local_accounts') || '{}');
-            if (localAccounts[trimmedEmail.toLowerCase()] === password) {
+            if (
+              localAccounts[trimmedEmail.toLowerCase()] === password ||
+              localAccounts[normalizedEmail] === password
+            ) {
               localStorage.setItem('fcf_auth_user', trimmedEmail);
               onSuccess(trimmedEmail);
               return;
             }
-            setAuthError('Invalid email or password.');
+            setAuthError('Invalid email/username or password.');
           } else {
-            // Graceful fallback so users/reviewers can sign in even if Firebase email/password provider is not enabled yet
             const localAccounts = JSON.parse(localStorage.getItem('fcf_local_accounts') || '{}');
             if (
               localAccounts[trimmedEmail.toLowerCase()] &&
               localAccounts[trimmedEmail.toLowerCase()] !== password
             ) {
-              setAuthError('Invalid email or password.');
+              setAuthError('Invalid email/username or password.');
             } else {
               localAccounts[trimmedEmail.toLowerCase()] = password;
+              localAccounts[normalizedEmail] = password;
               localStorage.setItem('fcf_local_accounts', JSON.stringify(localAccounts));
               localStorage.setItem('fcf_auth_user', trimmedEmail);
               onSuccess(trimmedEmail);
@@ -442,18 +461,22 @@ function AuthScreen({
       } else {
         try {
           const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-          const resolvedEmail = cred.user.email || trimmedEmail;
-          localStorage.setItem('fcf_auth_user', resolvedEmail);
-          onSuccess(resolvedEmail);
+          const resolvedIdentifier =
+            /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
+              ? cred.user.email || trimmedEmail
+              : trimmedEmail;
+          localStorage.setItem('fcf_auth_user', resolvedIdentifier);
+          onSuccess(resolvedIdentifier);
         } catch (firebaseErr: unknown) {
           const code = (firebaseErr as { code?: string })?.code || '';
           if (code === 'auth/email-already-in-use') {
-            setAuthError('An account with this email already exists. Please log in.');
+            setAuthError('An account with this email or username already exists. Please log in.');
           } else if (code === 'auth/weak-password') {
             setAuthError('Password must be at least 6 characters.');
           } else {
             const localAccounts = JSON.parse(localStorage.getItem('fcf_local_accounts') || '{}');
             localAccounts[trimmedEmail.toLowerCase()] = password;
+            localAccounts[normalizedEmail] = password;
             localStorage.setItem('fcf_local_accounts', JSON.stringify(localAccounts));
             localStorage.setItem('fcf_auth_user', trimmedEmail);
             onSuccess(trimmedEmail);
@@ -519,14 +542,14 @@ function AuthScreen({
           )}
           <div>
             <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2 block">
-              {isLogin ? 'Username or Email' : 'Email'}
+              Email or Username
             </label>
             <input
-              type={isLogin ? 'text' : 'email'}
+              type="text"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={isLogin ? 'Username or you@example.com' : 'you@example.com'}
+              placeholder="Email or Username"
               className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-green-600"
             />
           </div>
@@ -1120,7 +1143,10 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user?.email) {
+      const savedHandle = localStorage.getItem('fcf_auth_user');
+      if (savedHandle) {
+        setLoggedInEmail(savedHandle);
+      } else if (user?.email) {
         setLoggedInEmail(user.email);
       }
     });
@@ -1276,7 +1302,15 @@ export default function App() {
       <AuthScreen
         mode={currentView}
         onBack={() => setCurrentView('welcome')}
-        onSuccess={(email) => { setLoggedInEmail(email); setCurrentView('search'); }}
+        onSuccess={(identifier) => {
+          setLoggedInEmail(identifier);
+          setProfile((prev) => ({
+            ...prev,
+            name: prev.name || identifier,
+            email: identifier,
+          }));
+          setCurrentView('search');
+        }}
       />
     );
   }
@@ -1644,7 +1678,14 @@ export default function App() {
 
     {currentView === 'guide' && <CampTypesGuide />}
 
-    {currentView === 'reviews' && <ReviewsView profileName={profile.name} isAdmin={loggedInEmail === 'CoachChris51'} />}
+    {currentView === 'reviews' && (
+      <ReviewsView
+        profileName={profile.name || loggedInEmail}
+        isAdmin={['coachchris51', '@coachchris51', 'coachchris51@footballcampfinder.app'].includes(
+          loggedInEmail.toLowerCase()
+        )}
+      />
+    )}
 
     {currentView === 'locker' && (
       <LockerRoomView
