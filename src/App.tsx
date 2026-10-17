@@ -1366,10 +1366,10 @@ export default function App() {
     <div className="flex-1 min-h-0 w-full overflow-hidden">
     {currentView === 'search' && (
     <div className="relative h-full w-full max-w-[100vw] overflow-hidden bg-stone-50 font-sans">
-    <div className="flex flex-row h-full w-full max-w-[100vw]">
+    <div className="flex flex-col md:flex-row h-full w-full max-w-[100vw] overflow-y-auto md:overflow-hidden pb-[calc(7.5rem+env(safe-area-inset-bottom))] md:pb-0">
 
       {/* Search Form (left side) */}
-      <div className="w-1/2 h-full max-w-[100vw] border-r border-stone-200 bg-white flex flex-col shadow-2xl overflow-x-hidden overflow-y-auto pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
+      <div className="w-full md:w-1/2 md:h-full shrink-0 border-b md:border-b-0 md:border-r border-stone-200 bg-white flex flex-col shadow-sm md:shadow-2xl overflow-x-hidden md:overflow-y-auto md:pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
         <div className="p-4 md:p-6 border-b border-stone-100 shrink-0 overflow-x-hidden">
           <div className="flex items-center justify-between mb-4 gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -1530,7 +1530,7 @@ export default function App() {
       </div>
 
       {/* Camp List (right side) */}
-      <div ref={resultsPanelRef} className="w-1/2 h-full max-w-[100vw] overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-[calc(7.5rem+env(safe-area-inset-bottom))] space-y-4 custom-scrollbar bg-stone-50 box-border">
+      <div ref={resultsPanelRef} className="w-full md:w-1/2 md:h-full shrink-0 md:overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-8 md:pb-[calc(7.5rem+env(safe-area-inset-bottom))] space-y-4 custom-scrollbar bg-stone-50 box-border">
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-sm font-medium text-stone-500">{filteredCamps.length} camps found</span>
           </div>
