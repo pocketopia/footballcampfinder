@@ -4,38 +4,60 @@ workflows:
     max_build_duration: 120
     instance_type: mac_mini_m2
     integrations:
-      app_store_connect: codemagic
+      app_store_connect: CodeMagic
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+      cancel_previous_builds: true
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.footballcampfinder.app
+      groups:
+        - AppStore
       vars:
+        XCODE_WORKSPACE: "ios/App/App.xcodeproj/project.xcworkspace"
         XCODE_PROJECT: "ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
         BUNDLE_ID: "com.footballcampfinder.app"
-        APP_STORE_APPLE_ID: 6822476271
+        APP_STORE_APPLE_ID: "6822476271"
       node: 22
       xcode: latest
     scripts:
-      - name: Install npm dependencies and build web assets
+      - name: Install Dependencies
         script: |
           npm ci
+      - name: Build Web Assets
+        script: |
           npm run build
+      - name: Sync Capacitor iOS
+        script: |
           npx cap sync ios
-      - name: Set up code signing settings on Xcode project
+      - name: Increment Build Number
         script: |
-          xcode-project use-profiles
-      - name: Increment build number
+          LATEST=0
+          if [ -n "$APP_STORE_APPLE_ID" ]; then
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null | tail -n 1 | tr -dc '0-9')
+            LATEST=${LATEST:-0}
+          fi
+          NEXT=$((LATEST + 1))
+          FLOOR=$((PROJECT_BUILD_NUMBER + 10))
+          if [ "$FLOOR" -gt "$NEXT" ]; then NEXT=$FLOOR; fi
+          echo "Setting iOS build number to $NEXT (latest TestFlight: $LATEST, project build: $PROJECT_BUILD_NUMBER)"
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $NEXT;/g" ios/App/App.xcodeproj/project.pbxproj
+      - name: Fetch Signing Files
         script: |
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" || echo 0)
-          NEXT_BUILD=$((LATEST_BUILD_NUMBER + 1))
-          echo "Setting build number to $NEXT_BUILD"
-          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $NEXT_BUILD;/g" ios/App/App.xcodeproj/project.pbxproj
-      - name: Build ipa for distribution
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create --delete-stale-profiles
+          keychain add-certificates
+          xcode-project use-profiles --project "$XCODE_PROJECT"
+      - name: Build and Package IPA
         script: |
           xcode-project build-ipa \
-            --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME"
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME" \
+            --archive-xcargs "CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=N2SVGHFQLB CODE_SIGN_IDENTITY='Apple Distribution'"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
@@ -44,3 +66,4 @@ workflows:
         auth: integration
         submit_to_testflight: true
         submit_to_app_store: false
+
