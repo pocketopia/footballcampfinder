@@ -28,7 +28,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { format, isWithinInterval, parseISO, addDays } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { type FootballCamp } from './data/camps';
+import { type FootballCamp, INITIAL_CAMPS } from './data/camps';
 import { collection, getDocs, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import {
   signInWithEmailAndPassword,
@@ -199,8 +199,8 @@ const LockerRoomView = ({
   };
 
   return (
-    <div className="h-full w-full max-w-[100vw] overflow-x-hidden overflow-y-auto custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-32">
-      <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm mx-auto my-6">
+    <div className="h-full w-full max-w-[100vw] overflow-x-hidden overflow-y-auto custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),2rem)] pb-[calc(7.5rem+env(safe-area-inset-bottom))] px-4">
+      <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 w-full max-w-md md:max-w-xl mx-auto my-4">
           <h2 className="text-xl font-bold text-stone-900 text-center mb-6">Locker Room</h2>
 
           <div className="flex flex-col items-center">
@@ -600,12 +600,12 @@ function BottomNav({
   onNavigate: (view: ViewType) => void;
 }) {
   return (
-    <nav className="fixed bottom-0 left-0 w-full z-[100] bg-green-700 flex justify-around p-4 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-[0_-4px_20px_rgba(0,0,0,0.2)] sm:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 w-full z-[100] bg-green-700 flex justify-around items-center px-4 pt-2 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
       <button
         type="button"
         onClick={() => onNavigate('search')}
         className={cn(
-          'flex-1 flex flex-col items-center justify-start pt-3 gap-1 transition-opacity',
+          'flex-1 flex flex-col items-center justify-start pt-2 gap-1 transition-opacity',
           currentView === 'search' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
         )}
       >
@@ -616,7 +616,7 @@ function BottomNav({
         type="button"
         onClick={() => onNavigate('guide')}
         className={cn(
-          'flex-1 flex flex-col items-center justify-start pt-3 gap-1 transition-opacity',
+          'flex-1 flex flex-col items-center justify-start pt-2 gap-1 transition-opacity',
           currentView === 'guide' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
         )}
       >
@@ -627,7 +627,7 @@ function BottomNav({
         type="button"
         onClick={() => onNavigate('reviews')}
         className={cn(
-          'flex-1 flex flex-col items-center justify-start pt-3 gap-1 transition-opacity',
+          'flex-1 flex flex-col items-center justify-start pt-2 gap-1 transition-opacity',
           currentView === 'reviews' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
         )}
       >
@@ -638,7 +638,7 @@ function BottomNav({
         type="button"
         onClick={() => onNavigate('locker')}
         className={cn(
-          'flex-1 flex flex-col items-center justify-start pt-3 gap-1 transition-opacity',
+          'flex-1 flex flex-col items-center justify-start pt-2 gap-1 transition-opacity',
           currentView === 'locker' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
         )}
       >
@@ -717,58 +717,68 @@ const CANONICAL_CAMP_TYPES: { id: string; name: string; description: string }[] 
   },
 ];
 
-function CampTypesGuide() {
-  const [campTypes, setCampTypes] = useState<CampType[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+function CampTypesGuide({
+  camps,
+  onSelectCategory,
+}: {
+  camps: FootballCamp[];
+  onSelectCategory?: (filterQuery: string, campTypeBucket?: string) => void;
+}) {
+  const campTypes: CampType[] = useMemo(
+    () =>
+      CANONICAL_CAMP_TYPES.map((c) => ({
+        ...c,
+        targetAge:
+          c.id === 'youth'
+            ? 'Ages 6–12'
+            : c.id === 'middle-school'
+            ? 'Grades 6–8'
+            : c.id === 'flag'
+            ? 'All Ages'
+            : c.id === 'specialty'
+            ? 'Kickers / Punters / Long-Snappers'
+            : c.id === 'qb-passing'
+            ? 'Quarterbacks / Receivers'
+            : 'High School',
+      })),
+    []
+  );
 
-  useEffect(() => {
-    async function syncCampTypes() {
-      try {
-        // One-time overwrite: wipe whatever exists in Firestore and replace it
-        // with the canonical 11 client-drafted camp types verbatim, so any
-        // previously altered copies are never shown again.
-        const snapshot = await getDocs(collection(db, 'campTypes'));
-        const batch = writeBatch(db);
-        snapshot.docs.forEach((docSnap) => batch.delete(docSnap.ref));
-        CANONICAL_CAMP_TYPES.forEach((campType) => {
-          batch.set(doc(db, 'campTypes', campType.id), {
-            name: campType.name,
-            description: campType.description,
-            targetAge: '',
-          });
-        });
-        await batch.commit();
-        setCampTypes(CANONICAL_CAMP_TYPES.map((c) => ({ ...c, targetAge: '' })));
-      } catch (error) {
-        console.error('Failed to sync camp types to Firestore:', error);
-        // Fall back to rendering the canonical copy locally even if the write failed.
-        setCampTypes(CANONICAL_CAMP_TYPES.map((c) => ({ ...c, targetAge: '' })));
-      } finally {
-        setIsLoading(false);
+  const getCategoryMatch = useCallback(
+    (id: string): { count: number; query: string; bucket?: string } => {
+      const match = (re: RegExp, bucket?: string) =>
+        camps.filter(
+          (c) => (bucket && c.type === bucket) || re.test(`${c.name} ${c.description}`)
+        ).length;
+      switch (id) {
+        case 'specialty':
+          return { count: match(/spec|kick|punt|snap/i, 'Specialist'), query: '', bucket: 'Specialist' };
+        case 'youth':
+          return { count: match(/youth/i, 'Youth'), query: '', bucket: 'Youth' };
+        case 'lineman-big-man':
+          return { count: match(/lineman|big man|big-man|line|trench/i), query: 'Lineman' };
+        case 'prospect':
+          return { count: match(/prospect/i, 'Elite'), query: 'Prospect' };
+        case 'team':
+          return { count: match(/team/i), query: 'Team' };
+        case '7on7':
+          return { count: match(/7\s*on\s*7|7v7|7-on-7/i), query: '7 on 7' };
+        case 'qb-passing':
+          return { count: match(/qb|quarterback|passing|receiver/i), query: 'QB' };
+        case 'mega-camps':
+          return { count: match(/mega/i), query: 'Mega' };
+        case 'showcases':
+          return { count: match(/showcase/i), query: 'Showcase' };
+        case 'middle-school':
+          return { count: match(/middle school|youth/i, 'Youth'), query: '', bucket: 'Youth' };
+        case 'flag':
+          return { count: match(/flag/i), query: 'Flag' };
+        default:
+          return { count: camps.length, query: '' };
       }
-    }
-    syncCampTypes();
-  }, []);
-
-  if (isLoading) {
-    return (
-      <div className="h-full w-full flex flex-col items-center justify-center px-5 py-10 text-center">
-        <p className="text-sm text-stone-500">Loading camp types...</p>
-      </div>
-    );
-  }
-
-  if (campTypes.length === 0) {
-    return (
-      <div className="h-full w-full flex flex-col items-center justify-center px-5 py-10 text-center">
-        <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mb-4 text-stone-300">
-          <Trophy className="w-6 h-6" />
-        </div>
-        <h3 className="font-bold text-stone-900 mb-2 text-lg">Camp Types</h3>
-        <p className="text-sm text-stone-500 max-w-xs">No camp type information available yet.</p>
-      </div>
-    );
-  }
+    },
+    [camps]
+  );
 
   const CAMP_TYPE_ACCENT_COLORS = [
     '#10b981', '#14b8a6', '#3b82f6', '#6366f1', '#f59e0b',
@@ -782,41 +792,53 @@ function CampTypesGuide() {
   ];
 
   return (
-    <div className="h-full w-full max-w-[100vw] flex flex-row items-center overflow-x-auto overflow-y-hidden snap-x snap-mandatory custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-32">
-      {campTypes.map((campType, index) => (
-        <div
-          key={campType.id}
-          className="shrink-0 w-full h-full snap-center flex flex-col items-center justify-center px-5 py-10 text-center"
-        >
-          <div className="max-w-md w-full bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-white/40 p-5">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <img src="/helmet.png" alt="" className="w-10 h-10 object-contain" />
-              <span className="text-[11px] font-bold text-stone-400 uppercase tracking-widest">
-                Camp Type {index + 1} / {campTypes.length}
-              </span>
-            </div>
-            <div
-              className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center shadow-lg"
-              style={{ backgroundColor: CAMP_TYPE_ACCENT_COLORS[index % CAMP_TYPE_ACCENT_COLORS.length] }}
-            >
-              <Trophy className="text-white w-8 h-8" />
-            </div>
-            {campType.targetAge && (
-              <span
-                className={cn(
-                  'inline-block text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-4',
-                  CAMP_TYPE_BADGE_CLASSES[index % CAMP_TYPE_BADGE_CLASSES.length]
-                )}
+    <div className="h-full w-full max-w-[100vw] flex flex-row items-center overflow-x-auto overflow-y-hidden snap-x snap-mandatory custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),1.5rem)] pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
+      {campTypes.map((campType, index) => {
+        const info = getCategoryMatch(campType.id);
+        return (
+          <div
+            key={campType.id}
+            className="shrink-0 w-full h-full snap-center flex flex-col items-center justify-center px-5 py-4 text-center overflow-y-auto"
+          >
+            <div className="max-w-md md:max-w-2xl w-full bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border border-white/40 p-5 md:p-8">
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <img src="/helmet.png" alt="" className="w-8 h-8 object-contain" />
+                <span className="text-[11px] font-bold text-stone-400 uppercase tracking-widest">
+                  Camp Type {index + 1} / {campTypes.length}
+                </span>
+              </div>
+              <div
+                className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center shadow-lg"
+                style={{ backgroundColor: CAMP_TYPE_ACCENT_COLORS[index % CAMP_TYPE_ACCENT_COLORS.length] }}
               >
-                {campType.targetAge}
-              </span>
-            )}
-            <h3 className="text-xl font-extrabold text-stone-900 mb-3">{campType.name}</h3>
-            <p className="text-sm text-stone-600 leading-relaxed">{campType.description}</p>
-            <img src="/helmet-logo.png" alt="FCF Helmet" className="w-24 h-24 object-contain mx-auto mt-6" />
+                <Trophy className="text-white w-7 h-7" />
+              </div>
+              {campType.targetAge && (
+                <span
+                  className={cn(
+                    'inline-block text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-3',
+                    CAMP_TYPE_BADGE_CLASSES[index % CAMP_TYPE_BADGE_CLASSES.length]
+                  )}
+                >
+                  {campType.targetAge}
+                </span>
+              )}
+              <h3 className="text-xl font-extrabold text-stone-900 mb-2">{campType.name}</h3>
+              <p className="text-sm text-stone-600 leading-relaxed mb-4">{campType.description}</p>
+              {onSelectCategory && (
+                <button
+                  type="button"
+                  onClick={() => onSelectCategory(info.query, info.bucket)}
+                  className="w-full py-3 bg-green-700 text-white text-xs font-extrabold uppercase tracking-wider rounded-xl hover:bg-green-800 transition-colors shadow-md"
+                >
+                  Browse {campType.name} Camps ({info.count || camps.length})
+                </button>
+              )}
+              <img src="/helmet-logo.png" alt="FCF Helmet" className="w-16 h-16 object-contain mx-auto mt-4" />
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -831,8 +853,23 @@ interface Review {
 }
 
 function ReviewsView({ profileName, isAdmin }: { profileName: string; isAdmin: boolean }) {
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [reviews, setReviews] = useState<Review[]>([
+    {
+      id: 'default-review-1',
+      name: 'CoachChris51',
+      campName: 'USC Trojans Mega Prospect Showcase Camp',
+      rating: 5,
+      comment: 'Outstanding coaching staff, high tempo drills, and great college recruiting exposure for every position group.',
+    },
+    {
+      id: 'default-review-2',
+      name: 'Marcus T.',
+      campName: 'Texas Longhorns Trench Lineman / Big-Man Camp',
+      rating: 5,
+      comment: 'Best offensive and defensive line technique camp we attended all summer. Highly organized 1-on-1 reps!',
+    },
+  ]);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [campName, setCampName] = useState('');
   const [rating, setRating] = useState(0);
@@ -862,7 +899,9 @@ function ReviewsView({ profileName, isAdmin }: { profileName: string; isAdmin: b
         const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
         return bTime - aTime;
       });
-      setReviews(data);
+      if (data.length > 0) {
+        setReviews(data);
+      }
     } catch (err) {
       console.error('Failed to fetch reviews from Firestore:', err);
     } finally {
@@ -919,8 +958,8 @@ function ReviewsView({ profileName, isAdmin }: { profileName: string; isAdmin: b
   }, [reviews, campReviewSearch]);
 
   return (
-    <div className="h-full w-full max-w-[100vw] overflow-x-hidden overflow-y-auto custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),3rem)] pb-32">
-      <div className="max-w-2xl mx-auto px-5 pt-8 pb-32 space-y-6">
+    <div className="h-full w-full max-w-[100vw] overflow-x-hidden overflow-y-auto custom-scrollbar bg-[url('/skin.png')] bg-cover bg-center bg-fixed pt-[max(env(safe-area-inset-top),2rem)] pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
+      <div className="max-w-2xl md:max-w-4xl mx-auto px-5 pt-4 pb-24 space-y-6">
         <div className="bg-white rounded-3xl shadow-xl p-4 border border-stone-100">
           <div className="flex items-center gap-2 mb-1">
             <Trophy className="w-5 h-5 text-green-700" />
@@ -1133,7 +1172,7 @@ export default function App() {
   const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
   const [selectedCamp, setSelectedCamp] = useState<FootballCamp | null>(null);
   const [showMap, setShowMap] = useState(false);
-  const [camps, setCamps] = useState<FootballCamp[]>([]);
+  const [camps, setCamps] = useState<FootballCamp[]>(INITIAL_CAMPS);
   const [profile, setProfile] = useState<LockerRoomProfile>({ name: '', image: '', email: '', bio: '' });
   const [loggedInEmail, setLoggedInEmail] = useState('');
   const resultsPanelRef = useRef<HTMLDivElement>(null);
@@ -1227,7 +1266,9 @@ export default function App() {
             id: doc.id,
           } as FootballCamp;
         });
-        setCamps(data);
+        if (data.length > 0) {
+          setCamps(data);
+        }
       } catch (error) {
         console.error('Failed to fetch camps from Firestore:', error);
       }
@@ -1321,15 +1362,15 @@ export default function App() {
 
 
   return (
-    <div className="h-screen w-screen max-w-[100vw] overflow-hidden flex flex-col bg-stone-50 font-sans pt-[max(env(safe-area-inset-top),3rem)]">
-    <div className="flex-1 min-h-0 overflow-hidden">
+    <div className="fixed inset-0 h-[100dvh] w-screen max-w-[100vw] overflow-hidden flex flex-col bg-stone-50 font-sans pt-[max(env(safe-area-inset-top),2.5rem)]">
+    <div className="flex-1 min-h-0 w-full overflow-hidden">
     {currentView === 'search' && (
     <div className="relative h-full w-full max-w-[100vw] overflow-hidden bg-stone-50 font-sans">
     <div className="flex flex-row h-full w-full max-w-[100vw]">
 
       {/* Search Form (left side) */}
-      <div className="w-1/2 h-full max-w-[100vw] border-r border-stone-200 bg-white flex flex-col shadow-2xl overflow-x-hidden overflow-y-auto pb-32">
-        <div className="p-4 border-b border-stone-100 shrink-0 overflow-y-auto overflow-x-hidden">
+      <div className="w-1/2 h-full max-w-[100vw] border-r border-stone-200 bg-white flex flex-col shadow-2xl overflow-x-hidden overflow-y-auto pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
+        <div className="p-4 md:p-6 border-b border-stone-100 shrink-0 overflow-x-hidden">
           <div className="flex items-center justify-between mb-4 gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-10 h-10 bg-green-700 rounded-xl flex items-center justify-center shadow-lg shadow-green-200 shrink-0">
@@ -1489,7 +1530,7 @@ export default function App() {
       </div>
 
       {/* Camp List (right side) */}
-      <div ref={resultsPanelRef} className="w-1/2 h-full max-w-[100vw] overflow-y-auto overflow-x-hidden p-4 pb-32 space-y-4 custom-scrollbar bg-stone-50 box-border">
+      <div ref={resultsPanelRef} className="w-1/2 h-full max-w-[100vw] overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-[calc(7.5rem+env(safe-area-inset-bottom))] space-y-4 custom-scrollbar bg-stone-50 box-border">
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-sm font-medium text-stone-500">{filteredCamps.length} camps found</span>
           </div>
@@ -1676,7 +1717,17 @@ export default function App() {
     </div>
     )}
 
-    {currentView === 'guide' && <CampTypesGuide />}
+    {currentView === 'guide' && (
+      <CampTypesGuide
+        camps={camps}
+        onSelectCategory={(query, bucket) => {
+          setSearchQuery(query);
+          setSelectedCampTypes(bucket ? [bucket] : []);
+          setDistanceTier('NATIONAL');
+          setCurrentView('search');
+        }}
+      />
+    )}
 
     {currentView === 'reviews' && (
       <ReviewsView
